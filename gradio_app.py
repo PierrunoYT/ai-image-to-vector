@@ -52,8 +52,7 @@ def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="
         progress(0.1, "Starting image generation...")
 
         # Map style_type from UI to API format
-        if style_type == "None":
-            style_type = "AUTO"
+        # The API providers will handle the proper mapping of style_type values
 
         # Generate the image using the appropriate provider
         generated_image = generate_image(

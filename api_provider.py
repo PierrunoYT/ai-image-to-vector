@@ -17,8 +17,20 @@ class APIProvider:
     def __init__(self):
         self.name = "Base Provider"
 
-    def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="AUTO", progress=None):
-        """Generate an image using the provider's API"""
+    def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="Auto", progress=None):
+        """
+        Generate an image using the provider's API
+
+        Args:
+            prompt (str): Text prompt describing the image to generate
+            aspect_ratio (str): Aspect ratio of the generated image (e.g., "1:1", "16:9", "3:2")
+            magic_prompt_option (str): Magic prompt option ("Auto", "On", "Off")
+            style_type (str): Style type to use ("None", "Auto", "General", "Realistic", "Design")
+            progress: Optional progress callback function
+
+        Returns:
+            PIL.Image.Image: Generated image
+        """
         # Check if progress is provided and is a valid callable
         # Avoid accessing progress attributes directly to prevent IndexError
         if progress is not None and hasattr(progress, "__call__"):
@@ -44,6 +56,30 @@ class ReplicateProvider(APIProvider):
         """Check if Replicate API is properly configured"""
         return self.api_key is not None and len(self.api_key.strip()) > 0
 
+    def _map_style_type_for_replicate(self, style_type):
+        """
+        Map style type to the format expected by Replicate API
+
+        Args:
+            style_type (str): Style type from the UI ("AUTO", "GENERAL", "REALISTIC", "DESIGN")
+
+        Returns:
+            str: Style type in the format expected by Replicate API ("None", "Auto", "General", "Realistic", "Design")
+        """
+        # Map to the format expected by Replicate API
+        style_map = {
+            "AUTO": "Auto",
+            "GENERAL": "General",
+            "REALISTIC": "Realistic",
+            "DESIGN": "Design",
+            "NONE": "None",
+            "None": "None"
+        }
+
+        # Convert to title case for case-insensitive matching
+        style_key = style_type.upper() if style_type else "AUTO"
+        return style_map.get(style_key, "Auto")
+
     def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="AUTO", progress=None):
         """
         Generate an image using Ideogram v3 Quality model via Replicate API
@@ -52,7 +88,7 @@ class ReplicateProvider(APIProvider):
             prompt (str): Text prompt describing the image to generate
             aspect_ratio (str): Aspect ratio of the generated image (e.g., "1:1", "16:9", "3:2")
             magic_prompt_option (str): Magic prompt option ("Auto", "On", "Off")
-            style_type (str): Style type to use ("AUTO", "GENERAL", "REALISTIC", "DESIGN")
+            style_type (str): Style type to use ("None", "Auto", "General", "Realistic", "Design")
             progress: Optional progress callback function
 
         Returns:
@@ -74,6 +110,9 @@ class ReplicateProvider(APIProvider):
                 print(f"Warning: Error updating progress: {e}")
 
         try:
+            # Map style_type to the format expected by Replicate API
+            replicate_style_type = self._map_style_type_for_replicate(style_type)
+
             # Run the Ideogram v3 Quality model
             output = replicate.run(
                 "ideogram-ai/ideogram-v3-quality",
@@ -81,7 +120,7 @@ class ReplicateProvider(APIProvider):
                     "prompt": prompt,
                     "aspect_ratio": aspect_ratio,
                     "magic_prompt_option": magic_prompt_option,
-                    "style_type": style_type,
+                    "style_type": replicate_style_type,
                     "seed": 0  # Use 0 for random seed
                 }
             )
@@ -150,6 +189,30 @@ class FalProvider(APIProvider):
             return True
         return False
 
+    def _map_style_type_for_fal(self, style_type):
+        """
+        Map style type to the format expected by Fal.ai API
+
+        Args:
+            style_type (str): Style type from the UI ("None", "Auto", "General", "Realistic", "Design")
+
+        Returns:
+            str: Style type in the format expected by Fal.ai API
+        """
+        # Map to the format expected by Fal.ai API (which uses uppercase)
+        style_map = {
+            "AUTO": "AUTO",
+            "GENERAL": "GENERAL",
+            "REALISTIC": "REALISTIC",
+            "DESIGN": "DESIGN",
+            "NONE": "AUTO",  # Map "NONE" to "AUTO" for Fal.ai
+            "None": "AUTO"   # Map "None" to "AUTO" for Fal.ai
+        }
+
+        # Convert to uppercase for case-insensitive matching
+        style_key = style_type.upper() if style_type else "AUTO"
+        return style_map.get(style_key, "AUTO")
+
     def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="AUTO", progress=None):
         """
         Generate an image using Ideogram v3 model via Fal.ai API
@@ -158,7 +221,7 @@ class FalProvider(APIProvider):
             prompt (str): Text prompt describing the image to generate
             aspect_ratio (str): Aspect ratio of the generated image (e.g., "1:1", "16:9", "3:2")
             magic_prompt_option (str): Magic prompt option ("Auto", "On", "Off")
-            style_type (str): Style type to use ("AUTO", "GENERAL", "REALISTIC", "DESIGN")
+            style_type (str): Style type to use ("None", "Auto", "General", "Realistic", "Design")
             progress: Optional progress callback function
 
         Returns:
@@ -192,6 +255,7 @@ class FalProvider(APIProvider):
             # Map parameters to Fal.ai format
             image_size = self._map_aspect_ratio_to_image_size(aspect_ratio)
             expand_prompt = self._map_magic_prompt_to_expand_prompt(magic_prompt_option)
+            fal_style_type = self._map_style_type_for_fal(style_type)
 
             # Define callback for progress updates
             def on_queue_update(update):
@@ -208,7 +272,7 @@ class FalProvider(APIProvider):
                 arguments={
                     "prompt": prompt,
                     "rendering_speed": "BALANCED",
-                    "style": style_type,
+                    "style": fal_style_type,
                     "expand_prompt": expand_prompt,
                     "num_images": 1,
                     "image_size": image_size
