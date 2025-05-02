@@ -1,9 +1,9 @@
 import os
 import gradio as gr
 import traceback
-import imghdr
 from datetime import datetime
 from dotenv import load_dotenv
+from PIL import Image
 from recraft_vectorizer import vectorize_image, download_svg
 
 # Load environment variables
@@ -56,8 +56,10 @@ def process_image(image, progress=gr.Progress()):
             return None, None, "❌ ERROR: Failed to save the image or the image is empty."
 
         # Check if the file is a valid image
-        img_type = imghdr.what(input_path)
-        if not img_type:
+        try:
+            with Image.open(input_path) as img:
+                img.verify()  # Verify it's a valid image
+        except Exception:
             os.remove(input_path)  # Clean up invalid file
             return None, None, "❌ ERROR: The uploaded file is not a valid image."
 
@@ -178,8 +180,7 @@ with gr.Blocks(title="Image Vectorizer", theme=gr.themes.Soft()) as app:
             gr.Markdown("### 📥 Vectorized Result")
             output_preview = gr.HTML(
                 label="",
-                elem_id="output-preview",
-                height=300
+                elem_id="output-preview"
             )
 
     with gr.Row():
