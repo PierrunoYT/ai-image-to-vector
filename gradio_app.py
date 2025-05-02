@@ -1,12 +1,13 @@
 import os
 import gradio as gr
 import traceback
-import replicate
 from datetime import datetime
 from dotenv import load_dotenv
 from PIL import Image
 from io import BytesIO
 from recraft_vectorizer import vectorize_image, download_svg
+from ideogram_generator import generate_image
+from api_provider import get_provider
 
 # Load environment variables
 load_dotenv()
@@ -14,6 +15,7 @@ load_dotenv()
 # Get API keys from environment variables
 recraft_api_key = os.getenv("RECRAFT_API_TOKEN")
 replicate_api_key = os.getenv("REPLICATE_API_TOKEN")
+fal_api_key = os.getenv("FAL_KEY")
 
 # Create output directories if they don't exist
 OUTPUT_DIR = "output"
@@ -23,7 +25,7 @@ VECTORS_DIR = os.path.join(OUTPUT_DIR, "vectors")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(VECTORS_DIR, exist_ok=True)
 
-def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="None", progress=gr.Progress()):
+def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="AUTO", provider_name=None, progress=gr.Progress()):
     """
     Generate an image from a text prompt and then vectorize it
 
@@ -31,14 +33,16 @@ def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="
         prompt: Text prompt for image generation
         aspect_ratio: Aspect ratio of the generated image (e.g., "1:1", "16:9", "3:2")
         magic_prompt_option: Magic prompt option ("Auto", "On", "Off")
-        style_type: Style type to use ("None", "Auto", "General", "Realistic", "Design")
+        style_type: Style type to use ("AUTO", "GENERAL", "REALISTIC", "DESIGN")
+        provider_name: Name of the preferred provider ("replicate" or "fal")
         progress: Gradio progress indicator
 
     Returns:
         tuple: (generated_image, svg_path, svg_html, message)
     """
-    if not replicate_api_key:
-        return None, None, None, "❌ ERROR: Replicate API token not found!\n\nPlease create a .env file with your REPLICATE_API_TOKEN.\nSee the instructions for more details."
+    # Check if any API provider is available
+    if not replicate_api_key and not fal_api_key:
+        return None, None, None, "❌ ERROR: No API provider configured!\n\nPlease create a .env file with either REPLICATE_API_TOKEN or FAL_KEY.\nSee the instructions for more details."
 
     if not prompt or not prompt.strip():
         return None, None, None, "❌ ERROR: No prompt provided. Please enter a text prompt to generate an image."
@@ -47,41 +51,28 @@ def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="
         # Update progress
         progress(0.1, "Starting image generation...")
 
-        # Use the Ideogram v3 Quality model with the appropriate parameters
-        output = replicate.run(
-            "ideogram-ai/ideogram-v3-quality",
-            input={
-                "prompt": prompt,
-                "aspect_ratio": aspect_ratio,
-                "magic_prompt_option": magic_prompt_option,
-                "style_type": style_type,
-                "seed": 0  # Use 0 for random seed
-            }
+        # Map style_type from UI to API format
+        if style_type == "None":
+            style_type = "AUTO"
+
+        # Generate the image using the appropriate provider
+        generated_image = generate_image(
+            prompt=prompt,
+            aspect_ratio=aspect_ratio,
+            magic_prompt_option=magic_prompt_option,
+            style_type=style_type,
+            provider_name=provider_name,
+            progress=progress
         )
 
         # Update progress
-        progress(0.3, "Image generated, downloading...")
+        progress(0.4, "Image generation complete, starting vectorization...")
 
-        # Process the output
-        if output and isinstance(output, list) and len(output) > 0:
-            file_output = output[0]
+        # Process the generated image
+        svg_path, svg_html, message = process_image_internal(generated_image, progress, start_progress=0.4)
 
-            # Read the file content
-            image_data = file_output.read()
-
-            # Convert to PIL Image
-            generated_image = Image.open(BytesIO(image_data))
-
-            # Update progress
-            progress(0.4, "Image generation complete, starting vectorization...")
-
-            # Process the generated image
-            svg_path, svg_html, message = process_image_internal(generated_image, progress, start_progress=0.4)
-
-            # Return the results
-            return generated_image, svg_path, svg_html, message
-        else:
-            raise ValueError(f"Unexpected response format from Replicate API: {output}")
+        # Return the results
+        return generated_image, svg_path, svg_html, message
 
     except ValueError as e:
         # Handle specific errors
@@ -326,6 +317,15 @@ with gr.Blocks(title="Ideogram to Vector", theme=gr.themes.Soft()) as app:
                         info="The style helps define the specific aesthetic of the image"
                     )
 
+                    # Add provider selection dropdown
+                    provider_name = gr.Dropdown(
+                        label="API Provider",
+                        choices=["Auto", "Replicate", "Fal.ai"],
+                        value="Auto",
+                        elem_id="provider-name",
+                        info="Choose which API provider to use for image generation"
+                    )
+
                     generate_button = gr.Button(
                         "✨ Generate & Vectorize",
                         variant="primary",
@@ -397,8 +397,11 @@ with gr.Blocks(title="Ideogram to Vector", theme=gr.themes.Soft()) as app:
 
             **Note:**
             - This tool requires valid API tokens to be set in the .env file:
-              - Recraft API token for vectorization
-              - Replicate API token for image generation
+              - Recraft API token for vectorization (required)
+              - At least one of the following for image generation:
+                - Replicate API token (REPLICATE_API_TOKEN)
+                - Fal.ai API key (FAL_KEY)
+            - You can choose which API provider to use in the dropdown menu
             - All images are saved to the 'output/uploads' directory
             - All vectorized SVGs are saved to the 'output/vectors' directory
             """
@@ -414,7 +417,7 @@ with gr.Blocks(title="Ideogram to Vector", theme=gr.themes.Soft()) as app:
 
     generate_button.click(
         fn=generate_and_process_image,
-        inputs=[text_prompt, aspect_ratio, magic_prompt_option, style_type],
+        inputs=[text_prompt, aspect_ratio, magic_prompt_option, style_type, provider_name],
         outputs=[generated_image, output_file, generated_output_preview, output_message],
         show_progress=True
     )
@@ -432,8 +435,14 @@ def check_environment():
     if not recraft_api_key:
         issues.append("⚠️ Recraft API token not found! Please create a .env file with your RECRAFT_API_TOKEN.")
 
-    if not replicate_api_key:
-        issues.append("⚠️ Replicate API token not found! Please create a .env file with your REPLICATE_API_TOKEN.")
+    # Check if at least one image generation API is available
+    if not replicate_api_key and not fal_api_key:
+        issues.append("⚠️ No image generation API configured! Please create a .env file with either REPLICATE_API_TOKEN or FAL_KEY.")
+    else:
+        if not replicate_api_key:
+            print("ℹ️ Replicate API token not found. Fal.ai will be used for image generation.")
+        if not fal_api_key:
+            print("ℹ️ Fal.ai API key not found. Replicate will be used for image generation.")
 
     # Check if output directories exist and are writable
     for directory in [UPLOADS_DIR, VECTORS_DIR]:

@@ -1,34 +1,32 @@
 import os
-import replicate
 from dotenv import load_dotenv
 from PIL import Image
-from io import BytesIO
+from api_provider import get_provider
 
 # Load environment variables
 load_dotenv()
 
-# Get API key from environment variables
-api_key = os.getenv("REPLICATE_API_TOKEN")
-
-def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", progress=None):
+def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="AUTO", provider_name=None, progress=None):
     """
-    Generate an image using Ideogram v3 Quality model via Replicate API
+    Generate an image using Ideogram v3 model via the configured API provider
 
     Args:
         prompt (str): Text prompt describing the image to generate
         aspect_ratio (str): Aspect ratio of the generated image (e.g., "1:1", "16:9", "3:2")
         magic_prompt_option (str): Magic prompt option ("Auto", "On", "Off")
+        style_type (str): Style type to use ("AUTO", "GENERAL", "REALISTIC", "DESIGN")
+        provider_name (str, optional): Name of the preferred provider ("replicate" or "fal")
         progress: Optional progress callback function
 
     Returns:
         PIL.Image.Image: Generated image or None if generation failed
 
     Raises:
-        ValueError: If the API key is not set or prompt is empty
+        ValueError: If no API providers are configured or prompt is empty
         Exception: For other errors during image generation
 
     Notes:
-        This function uses the Ideogram v3 Quality model from Replicate.
+        This function uses either the Replicate or Fal.ai API for Ideogram v3 model.
         The model generates high-quality images based on text prompts.
 
         Available aspect ratios:
@@ -40,64 +38,44 @@ def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", progr
         - "Auto": Automatically optimize the prompt
         - "On": Always optimize the prompt
         - "Off": Use the prompt as-is
+
+        Style Type options:
+        - "AUTO": Automatically select the style
+        - "GENERAL": General style
+        - "REALISTIC": Realistic style
+        - "DESIGN": Design style
     """
-    # Check if API key is available
-    if not api_key:
-        raise ValueError("Replicate API token not found. Make sure to set the REPLICATE_API_TOKEN environment variable.")
+    # Get the appropriate provider
+    provider = get_provider(provider_name)
 
-    # Check if prompt is provided
-    if not prompt or not prompt.strip():
-        raise ValueError("Prompt cannot be empty. Please provide a description for the image.")
-
-    # Update progress if provided
-    if progress:
-        progress(0.2, "Starting image generation...")
-
-    try:
-        # Run the Ideogram v3 Quality model
-        output = replicate.run(
-            "ideogram-ai/ideogram-v3-quality",
-            input={
-                "prompt": prompt,
-                "aspect_ratio": aspect_ratio,
-                "magic_prompt_option": magic_prompt_option,
-                "seed": 0  # Use 0 for random seed
-            }
-        )
-
-        # Update progress if provided
-        if progress:
-            progress(0.7, "Image generated, downloading...")
-
-        # The output is a list with the first item being a FileOutput object
-        if output and isinstance(output, list) and len(output) > 0:
-            file_output = output[0]
-
-            # Read the file content
-            image_data = file_output.read()
-
-            # Convert to PIL Image
-            image = Image.open(BytesIO(image_data))
-
-            # Update progress if provided
-            if progress:
-                progress(1.0, "Image generation complete!")
-
-            return image
-        else:
-            raise ValueError(f"Unexpected response format from Replicate API: {output}")
-
-    except Exception as e:
-        print(f"Error during image generation: {e}")
-        raise
+    # Generate the image using the provider
+    return provider.generate_image(prompt, aspect_ratio, magic_prompt_option, style_type, progress)
 
 # Example usage
 if __name__ == "__main__":
     try:
-        # Check if API key is available
-        if not api_key:
-            print("ERROR: Replicate API token not found. Make sure to set the REPLICATE_API_TOKEN environment variable.")
-            print("Create a .env file with your API token as REPLICATE_API_TOKEN=your_token")
+        # Prompt for the API provider
+        print("Available API providers:")
+        print("1. Auto (use first available provider)")
+        print("2. Replicate")
+        print("3. Fal.ai")
+
+        provider_choice = input("Choose an API provider (1-3, default: 1): ").strip() or "1"
+
+        provider_map = {
+            "1": None,  # Auto
+            "2": "replicate",
+            "3": "fal"
+        }
+
+        provider_name = provider_map.get(provider_choice)
+
+        # Try to get the provider to check if it's configured
+        try:
+            provider = get_provider(provider_name)
+            print(f"Using {provider.name} as the API provider")
+        except ValueError as e:
+            print(f"ERROR: {e}")
             exit(1)
 
         # Prompt for the image
@@ -148,13 +126,32 @@ if __name__ == "__main__":
 
         magic_prompt_option = magic_option_map.get(magic_choice, "Auto")
 
+        # Ask for style type
+        print("\nStyle Type options:")
+        print("1. Auto")
+        print("2. General")
+        print("3. Realistic")
+        print("4. Design")
+
+        style_choice = input("Choose a Style Type (1-4, default: 1): ").strip() or "1"
+
+        style_type_map = {
+            "1": "AUTO",
+            "2": "GENERAL",
+            "3": "REALISTIC",
+            "4": "DESIGN"
+        }
+
+        style_type = style_type_map.get(style_choice, "AUTO")
+
         # Generate image
-        print(f"\nGenerating image with Ideogram v3 Quality model...")
+        print(f"\nGenerating image with Ideogram v3 model...")
         print(f"Prompt: {prompt}")
         print(f"Aspect Ratio: {aspect_ratio}")
         print(f"Magic Prompt: {magic_prompt_option}")
+        print(f"Style Type: {style_type}")
 
-        image = generate_image(prompt, aspect_ratio, magic_prompt_option)
+        image = generate_image(prompt, aspect_ratio, magic_prompt_option, style_type, provider_name)
 
         # Save the image
         output_filename = "generated_image.png"

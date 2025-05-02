@@ -3,3 +3,4 @@ python-dotenv
 openai
 gradio
 replicate
+fal-client

@@ -1,8 +1,8 @@
 # Ideogram to Vector
 
-A tool to generate images with Ideogram v3 Quality and vectorize them using the Recraft API. Includes both a command-line interface and a web-based UI powered by Gradio.
+A tool to generate images with Ideogram v3 and vectorize them using the Recraft API. Includes both a command-line interface and a web-based UI powered by Gradio.
 
-This tool uses the latest Ideogram v3 Quality model from Replicate to create high-quality images from text prompts, and then converts them to scalable vector graphics (SVG) using the Recraft API.
+This tool uses the latest Ideogram v3 model from either Replicate or Fal.ai to create high-quality images from text prompts, and then converts them to scalable vector graphics (SVG) using the Recraft API.
 
 ## Setup
 
@@ -15,22 +15,26 @@ This tool uses the latest Ideogram v3 Quality model from Replicate to create hig
    ```
    RECRAFT_API_TOKEN=your_recraft_token_here
    REPLICATE_API_TOKEN=your_replicate_token_here
+   FAL_KEY=your_fal_api_key_here
    ```
    You can use the `.env.example` file as a template.
 
    - Get your Recraft API token from [Recraft](https://recraft.ai)
    - Get your Replicate API token from [Replicate](https://replicate.com/account/api-tokens)
+   - Get your Fal.ai API key from [Fal.ai](https://fal.ai/dashboard/keys)
+
+   Note: You only need either the Replicate API token OR the Fal.ai API key for image generation, but the Recraft API token is required for vectorization.
 
 ## Usage
 
 ### Command Line Interface
 
-#### Generate an image with Ideogram v3 Quality:
+#### Generate an image with Ideogram v3:
 ```
 python ideogram_generator.py
 ```
 
-The script will prompt you to enter a text prompt. After processing, it will generate an image and save it to the current directory.
+The script will prompt you to choose an API provider (Replicate or Fal.ai), enter a text prompt, and select various options. After processing, it will generate an image and save it to the current directory.
 
 #### Vectorize an existing image:
 ```
@@ -56,19 +60,28 @@ This will start a local web server (typically at http://127.0.0.1:7860) where yo
 
 #### Generate Image Tab:
 1. Enter a text prompt describing the image you want to create
-2. Choose a style preset (none, cinematic, creative, vibrant, photographic)
-3. Adjust the width and height of the image (in pixels)
-4. Click the "Generate & Vectorize" button
-5. Wait for the AI to generate your image and vectorize it
-6. View the generated image and vectorized SVG in the preview areas
-7. Download the resulting SVG file
+2. Choose an aspect ratio for your image (e.g., 1:1, 16:9, 3:2)
+3. Select a Magic Prompt option (Auto, On, Off)
+4. Choose a Style Type (None, Auto, General, Realistic, Design)
+5. Select an API Provider (Auto, Replicate, Fal.ai)
+6. Click the "Generate & Vectorize" button
+7. Wait for the AI to generate your image and vectorize it
+8. View the generated image and vectorized SVG in the preview areas
+9. Download the resulting SVG file
 
 All uploaded and generated images are saved to the `output/uploads` directory, and all vectorized SVGs are saved to the `output/vectors` directory.
 
 ## Examples
 
-### Generating an image with Ideogram v3 Quality:
+### Generating an image with Ideogram v3:
 ```
+Available API providers:
+1. Auto (use first available provider)
+2. Replicate
+3. Fal.ai
+Choose an API provider (1-3, default: 1): 1
+Using Replicate as the API provider
+
 Enter a prompt to generate an image: A beautiful sunset over a mountain landscape
 
 Available aspect ratios:
@@ -86,10 +99,18 @@ Magic Prompt options:
 3. Off - Use the prompt as-is
 Choose a Magic Prompt option (1-3, default: 1): 1
 
-Generating image with Ideogram v3 Quality model...
+Style Type options:
+1. Auto
+2. General
+3. Realistic
+4. Design
+Choose a Style Type (1-4, default: 1): 3
+
+Generating image with Ideogram v3 model...
 Prompt: A beautiful sunset over a mountain landscape
 Aspect Ratio: 3:2
 Magic Prompt: Auto
+Style Type: REALISTIC
 ✅ Image successfully generated and saved to generated_image.png
 
 Next steps:
@@ -109,7 +130,8 @@ SVG file successfully downloaded to generated_image_vectorized.svg
 
 ## Features
 
-- Generate high-quality images using Ideogram v3 Quality model
+- Generate high-quality images using Ideogram v3 model
+- Support for multiple API providers (Replicate and Fal.ai)
 - Vectorize images using Recraft API
 - User-friendly web interface with Gradio
 - Command-line interface for batch processing
