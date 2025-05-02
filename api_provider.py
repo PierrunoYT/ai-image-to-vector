@@ -114,6 +114,9 @@ class ReplicateProvider(APIProvider):
             replicate_style_type = self._map_style_type_for_replicate(style_type)
 
             # Run the Ideogram v3 Quality model
+            # Note: The Replicate API response format can vary depending on the version of the replicate-python client
+            # We explicitly set use_file_output=False to get URL strings instead of FileOutput objects
+            # This ensures consistent behavior across different versions of the replicate-python client
             output = replicate.run(
                 "ideogram-ai/ideogram-v3-quality",
                 input={
@@ -122,7 +125,8 @@ class ReplicateProvider(APIProvider):
                     "magic_prompt_option": magic_prompt_option,
                     "style_type": replicate_style_type,
                     "seed": 0  # Use 0 for random seed
-                }
+                },
+                use_file_output=False  # Force URL string output format
             )
 
             # Update progress if provided
@@ -132,15 +136,31 @@ class ReplicateProvider(APIProvider):
                 except Exception as e:
                     print(f"Warning: Error updating progress: {e}")
 
-            # The output is a list with the first item being a FileOutput object
+            # Process the response from Replicate API
+            # With use_file_output=False, the output should be a URL string or a list of URL strings
+
+            # Print debug information
+            print(f"DEBUG: Replicate API response type: {type(output)}")
+            print(f"DEBUG: Replicate API response: {output}")
+
+            # Case 1: Output is a list of URL strings
             if output and isinstance(output, list) and len(output) > 0:
-                file_output = output[0]
+                image_url = output[0]
+                print(f"DEBUG: Processing as list, first item: {image_url}")
 
-                # Read the file content
-                image_data = file_output.read()
+                # Download the image from URL
+                try:
+                    response = requests.get(image_url, timeout=30)
+                    response.raise_for_status()
 
-                # Convert to PIL Image
-                image = Image.open(BytesIO(image_data))
+                    # Convert to PIL Image
+                    image = Image.open(BytesIO(response.content))
+                except requests.exceptions.RequestException as e:
+                    print(f"DEBUG: Error downloading image from URL: {e}")
+                    raise ValueError(f"Failed to download image from URL: {image_url}. Error: {e}")
+                except Exception as e:
+                    print(f"DEBUG: Error processing image: {e}")
+                    raise ValueError(f"Failed to process image from URL: {image_url}. Error: {e}")
 
                 # Update progress if provided
                 if progress is not None and hasattr(progress, "__call__"):
@@ -150,7 +170,37 @@ class ReplicateProvider(APIProvider):
                         print(f"Warning: Error updating progress: {e}")
 
                 return image
+
+            # Case 2: Output is a direct URL string
+            elif output and isinstance(output, str):
+                print(f"DEBUG: Processing as string URL: {output}")
+
+                # Download the image from URL
+                try:
+                    response = requests.get(output, timeout=30)
+                    response.raise_for_status()
+
+                    # Convert to PIL Image
+                    image = Image.open(BytesIO(response.content))
+                except requests.exceptions.RequestException as e:
+                    print(f"DEBUG: Error downloading image from URL: {e}")
+                    raise ValueError(f"Failed to download image from URL: {output}. Error: {e}")
+                except Exception as e:
+                    print(f"DEBUG: Error processing image: {e}")
+                    raise ValueError(f"Failed to process image from URL: {output}. Error: {e}")
+
+                # Update progress if provided
+                if progress is not None and hasattr(progress, "__call__"):
+                    try:
+                        progress(1.0, "Image generation complete!")
+                    except Exception as e:
+                        print(f"Warning: Error updating progress: {e}")
+
+                return image
+
+            # If none of the above formats match, raise an error
             else:
+                print(f"DEBUG: Failed to process output, type: {type(output)}, value: {output}")
                 raise ValueError(f"Unexpected response format from Replicate API: {output}")
 
         except Exception as e:
@@ -289,15 +339,27 @@ class FalProvider(APIProvider):
                     print(f"Warning: Error updating progress: {e}")
 
             # Process the result
+            # Print debug information
+            print(f"DEBUG: Fal.ai API response type: {type(result)}")
+            print(f"DEBUG: Fal.ai API response: {result}")
+
             if result and "images" in result and len(result["images"]) > 0:
                 image_url = result["images"][0]["url"]
+                print(f"DEBUG: Processing Fal.ai image URL: {image_url}")
 
                 # Download the image
-                response = requests.get(image_url, timeout=30)
-                response.raise_for_status()
+                try:
+                    response = requests.get(image_url, timeout=30)
+                    response.raise_for_status()
 
-                # Convert to PIL Image
-                image = Image.open(BytesIO(response.content))
+                    # Convert to PIL Image
+                    image = Image.open(BytesIO(response.content))
+                except requests.exceptions.RequestException as e:
+                    print(f"DEBUG: Error downloading image from Fal.ai URL: {e}")
+                    raise ValueError(f"Failed to download image from Fal.ai URL: {image_url}. Error: {e}")
+                except Exception as e:
+                    print(f"DEBUG: Error processing Fal.ai image: {e}")
+                    raise ValueError(f"Failed to process image from Fal.ai URL: {image_url}. Error: {e}")
 
                 # Update progress if provided
                 if progress is not None and hasattr(progress, "__call__"):
@@ -308,6 +370,7 @@ class FalProvider(APIProvider):
 
                 return image
             else:
+                print(f"DEBUG: Failed to process Fal.ai result: {result}")
                 raise ValueError(f"Unexpected response format from Fal.ai API: {result}")
 
         except Exception as e:

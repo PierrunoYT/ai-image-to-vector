@@ -31,3 +31,10 @@ output/uploads/*
 output/vectors/*
 !output/uploads/.gitkeep
 !output/vectors/.gitkeep
+
+# Ignore all uploaded images and generated vectors
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
