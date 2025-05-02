@@ -16,11 +16,18 @@ class APIProvider:
     """Base class for API providers"""
     def __init__(self):
         self.name = "Base Provider"
-        
+
     def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="AUTO", progress=None):
         """Generate an image using the provider's API"""
+        # Check if progress is provided and is a valid callable
+        # Avoid accessing progress attributes directly to prevent IndexError
+        if progress is not None and hasattr(progress, "__call__"):
+            try:
+                progress(0.2, "Starting image generation...")
+            except Exception as e:
+                print(f"Warning: Error updating progress: {e}")
         raise NotImplementedError("This method must be implemented by subclasses")
-    
+
     def is_configured(self):
         """Check if the provider is properly configured"""
         raise NotImplementedError("This method must be implemented by subclasses")
@@ -32,11 +39,11 @@ class ReplicateProvider(APIProvider):
         super().__init__()
         self.name = "Replicate"
         self.api_key = REPLICATE_API_KEY
-        
+
     def is_configured(self):
         """Check if Replicate API is properly configured"""
         return self.api_key is not None and len(self.api_key.strip()) > 0
-    
+
     def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="AUTO", progress=None):
         """
         Generate an image using Ideogram v3 Quality model via Replicate API
@@ -60,8 +67,11 @@ class ReplicateProvider(APIProvider):
             raise ValueError("Prompt cannot be empty. Please provide a description for the image.")
 
         # Update progress if provided
-        if progress:
-            progress(0.2, "Starting image generation with Replicate...")
+        if progress is not None and hasattr(progress, "__call__"):
+            try:
+                progress(0.2, "Starting image generation with Replicate...")
+            except Exception as e:
+                print(f"Warning: Error updating progress: {e}")
 
         try:
             # Run the Ideogram v3 Quality model
@@ -77,8 +87,11 @@ class ReplicateProvider(APIProvider):
             )
 
             # Update progress if provided
-            if progress:
-                progress(0.7, "Image generated, downloading...")
+            if progress is not None and hasattr(progress, "__call__"):
+                try:
+                    progress(0.7, "Image generated, downloading...")
+                except Exception as e:
+                    print(f"Warning: Error updating progress: {e}")
 
             # The output is a list with the first item being a FileOutput object
             if output and isinstance(output, list) and len(output) > 0:
@@ -91,8 +104,11 @@ class ReplicateProvider(APIProvider):
                 image = Image.open(BytesIO(image_data))
 
                 # Update progress if provided
-                if progress:
-                    progress(1.0, "Image generation complete!")
+                if progress is not None and hasattr(progress, "__call__"):
+                    try:
+                        progress(1.0, "Image generation complete!")
+                    except Exception as e:
+                        print(f"Warning: Error updating progress: {e}")
 
                 return image
             else:
@@ -109,16 +125,13 @@ class FalProvider(APIProvider):
         super().__init__()
         self.name = "Fal.ai"
         self.api_key = FAL_API_KEY
-        
+
     def is_configured(self):
         """Check if Fal.ai API is properly configured"""
         return self.api_key is not None and len(self.api_key.strip()) > 0
-    
+
     def _map_aspect_ratio_to_image_size(self, aspect_ratio):
         """Map aspect ratio to image size for Fal.ai API"""
-        # Default to square_hd
-        image_size = "square_hd"
-        
         # Map common aspect ratios to Fal.ai image size options
         ratio_map = {
             "1:1": "square_hd",
@@ -127,15 +140,16 @@ class FalProvider(APIProvider):
             "4:3": "landscape_4_3",
             "3:4": "portrait_4_3"
         }
-        
+
+        # Return the mapped value or default to square_hd
         return ratio_map.get(aspect_ratio, "square_hd")
-    
+
     def _map_magic_prompt_to_expand_prompt(self, magic_prompt_option):
         """Map magic prompt option to expand_prompt parameter for Fal.ai API"""
         if magic_prompt_option.lower() in ["auto", "on"]:
             return True
         return False
-    
+
     def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="AUTO", progress=None):
         """
         Generate an image using Ideogram v3 model via Fal.ai API
@@ -159,8 +173,11 @@ class FalProvider(APIProvider):
             raise ValueError("Prompt cannot be empty. Please provide a description for the image.")
 
         # Update progress if provided
-        if progress:
-            progress(0.2, "Starting image generation with Fal.ai...")
+        if progress is not None and hasattr(progress, "__call__"):
+            try:
+                progress(0.2, "Starting image generation with Fal.ai...")
+            except Exception as e:
+                print(f"Warning: Error updating progress: {e}")
 
         try:
             # Import fal_client here to avoid import errors if not installed
@@ -168,20 +185,23 @@ class FalProvider(APIProvider):
                 import fal_client
             except ImportError:
                 raise ImportError("Fal.ai client not installed. Please install it with 'pip install fal-client'")
-            
+
             # Set the API key
             os.environ["FAL_KEY"] = self.api_key
-            
+
             # Map parameters to Fal.ai format
             image_size = self._map_aspect_ratio_to_image_size(aspect_ratio)
             expand_prompt = self._map_magic_prompt_to_expand_prompt(magic_prompt_option)
-            
+
             # Define callback for progress updates
             def on_queue_update(update):
-                if isinstance(update, fal_client.InProgress) and progress:
+                if isinstance(update, fal_client.InProgress) and progress is not None and hasattr(progress, "__call__"):
                     for log in update.logs:
-                        progress(0.5, log["message"])
-            
+                        try:
+                            progress(0.5, log["message"])
+                        except Exception as e:
+                            print(f"Warning: Error updating progress in callback: {e}")
+
             # Call the Fal.ai API
             result = fal_client.subscribe(
                 "fal-ai/ideogram/v3",
@@ -194,32 +214,38 @@ class FalProvider(APIProvider):
                     "image_size": image_size
                 },
                 with_logs=True,
-                on_queue_update=on_queue_update if progress else None,
+                on_queue_update=on_queue_update if progress is not None and hasattr(progress, "__call__") else None,
             )
-            
+
             # Update progress if provided
-            if progress:
-                progress(0.7, "Image generated, downloading...")
-            
+            if progress is not None and hasattr(progress, "__call__"):
+                try:
+                    progress(0.7, "Image generated, downloading...")
+                except Exception as e:
+                    print(f"Warning: Error updating progress: {e}")
+
             # Process the result
             if result and "images" in result and len(result["images"]) > 0:
                 image_url = result["images"][0]["url"]
-                
+
                 # Download the image
                 response = requests.get(image_url, timeout=30)
                 response.raise_for_status()
-                
+
                 # Convert to PIL Image
                 image = Image.open(BytesIO(response.content))
-                
+
                 # Update progress if provided
-                if progress:
-                    progress(1.0, "Image generation complete!")
-                
+                if progress is not None and hasattr(progress, "__call__"):
+                    try:
+                        progress(1.0, "Image generation complete!")
+                    except Exception as e:
+                        print(f"Warning: Error updating progress: {e}")
+
                 return image
             else:
                 raise ValueError(f"Unexpected response format from Fal.ai API: {result}")
-                
+
         except Exception as e:
             print(f"Error during image generation with Fal.ai: {e}")
             raise
@@ -228,34 +254,34 @@ class FalProvider(APIProvider):
 def get_provider(provider_name=None):
     """
     Get the appropriate API provider based on configuration and preference
-    
+
     Args:
         provider_name (str, optional): Name of the preferred provider ("replicate" or "fal")
                                       If None, will use the first available configured provider
-    
+
     Returns:
         APIProvider: An instance of the appropriate provider
-        
+
     Raises:
         ValueError: If no providers are properly configured
     """
     # Create provider instances
     replicate_provider = ReplicateProvider()
     fal_provider = FalProvider()
-    
+
     # If a specific provider is requested, try to use it
     if provider_name:
         if provider_name.lower() == "replicate" and replicate_provider.is_configured():
             return replicate_provider
         elif provider_name.lower() == "fal" and fal_provider.is_configured():
             return fal_provider
-    
+
     # Otherwise, use the first available provider
     if replicate_provider.is_configured():
         return replicate_provider
     elif fal_provider.is_configured():
         return fal_provider
-    
+
     # If no providers are configured, raise an error
     raise ValueError(
         "No API providers are properly configured. "
@@ -269,15 +295,15 @@ if __name__ == "__main__":
         # Get the appropriate provider
         provider = get_provider()
         print(f"Using {provider.name} as the API provider")
-        
+
         # Prompt for the image
         prompt = input("Enter a prompt to generate an image: ")
-        
+
         # Validate input
         if not prompt:
             print("ERROR: No prompt provided.")
             exit(1)
-            
+
         # Ask for aspect ratio
         print("\nAvailable aspect ratios:")
         print("1. Square (1:1)")
@@ -285,9 +311,9 @@ if __name__ == "__main__":
         print("3. Portrait (9:16)")
         print("4. Landscape (3:2)")
         print("5. Portrait (2:3)")
-        
+
         aspect_choice = input("Choose an aspect ratio (1-5, default: 1): ").strip() or "1"
-        
+
         aspect_ratio_map = {
             "1": "1:1",
             "2": "16:9",
@@ -295,65 +321,66 @@ if __name__ == "__main__":
             "4": "3:2",
             "5": "2:3"
         }
-        
+
         aspect_ratio = aspect_ratio_map.get(aspect_choice, "1:1")
-        
+
         # Ask for magic prompt option
         print("\nMagic Prompt options:")
         print("1. Auto - Automatically optimize the prompt")
         print("2. On - Always optimize the prompt")
         print("3. Off - Use the prompt as-is")
-        
+
         magic_choice = input("Choose a Magic Prompt option (1-3, default: 1): ").strip() or "1"
-        
+
         magic_option_map = {
             "1": "Auto",
             "2": "On",
             "3": "Off"
         }
-        
+
         magic_prompt_option = magic_option_map.get(magic_choice, "Auto")
-        
+
         # Ask for style type
         print("\nStyle Type options:")
         print("1. Auto")
         print("2. General")
         print("3. Realistic")
         print("4. Design")
-        
+
         style_choice = input("Choose a Style Type (1-4, default: 1): ").strip() or "1"
-        
+
         style_type_map = {
             "1": "AUTO",
             "2": "GENERAL",
             "3": "REALISTIC",
             "4": "DESIGN"
         }
-        
+
         style_type = style_type_map.get(style_choice, "AUTO")
-        
+
         # Generate image
         print(f"\nGenerating image with {provider.name} using Ideogram v3 model...")
         print(f"Prompt: {prompt}")
         print(f"Aspect Ratio: {aspect_ratio}")
         print(f"Magic Prompt: {magic_prompt_option}")
         print(f"Style Type: {style_type}")
-        
+
         image = provider.generate_image(prompt, aspect_ratio, magic_prompt_option, style_type)
-        
+
         # Save the image
         output_filename = "generated_image.png"
         image.save(output_filename)
         print(f"✅ Image successfully generated and saved to {output_filename}")
-        
+
         # Provide next steps
         print("\nNext steps:")
         print("1. To vectorize this image, run: python recraft_vectorizer.py")
         print("2. To use the web interface, run: python gradio_app.py")
-        
+
     except ValueError as e:
         print(f"ERROR: {e}")
         exit(1)
     except Exception as e:
         print(f"ERROR: Image generation failed: {e}")
         exit(1)
+
