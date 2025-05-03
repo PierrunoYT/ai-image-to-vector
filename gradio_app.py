@@ -25,7 +25,7 @@ VECTORS_DIR = os.path.join(OUTPUT_DIR, "vectors")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(VECTORS_DIR, exist_ok=True)
 
-def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="AUTO", provider_name=None, progress=gr.Progress()):
+def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="auto", provider_name=None, progress=gr.Progress()):
     """
     Generate an image from a text prompt and then vectorize it
 
@@ -33,7 +33,7 @@ def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="
         prompt: Text prompt for image generation
         aspect_ratio: Aspect ratio of the generated image (e.g., "1:1", "16:9", "3:2")
         magic_prompt_option: Magic prompt option ("Auto", "On", "Off")
-        style_type: Style type to use ("AUTO", "GENERAL", "REALISTIC", "DESIGN")
+        style_type: Style type to use ("auto", "general", "realistic", "design", "none")
         provider_name: Name of the preferred provider ("replicate" or "fal")
         progress: Gradio progress indicator
 
@@ -48,12 +48,44 @@ def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="
         return None, None, None, "❌ ERROR: No prompt provided. Please enter a text prompt to generate an image."
 
     try:
-        # Update progress
-        progress(0.1, "Starting image generation...")
+        # Define progress stages and their relative weights for the entire process
+        stages = {
+            "prepare": {"weight": 0.05, "message": "Preparing to generate image..."},
+            "generate": {"weight": 0.35, "message": "Generating image..."},
+            "vectorize": {"weight": 0.6, "message": "Vectorizing image..."}
+        }
+        
+        # Function to calculate weighted progress
+        def update_progress(stage, stage_progress=1.0):
+            # Calculate the beginning and end progress values for this stage
+            stage_keys = list(stages.keys())
+            stage_idx = stage_keys.index(stage)
+            
+            # Sum of weights up to this stage
+            previous_weight = sum(stages[stage_keys[i]]["weight"] for i in range(stage_idx))
+            
+            # Weight of the current stage
+            current_weight = stages[stage]["weight"]
+            
+            # Calculate the absolute progress (0.0 to 1.0)
+            absolute_progress = (previous_weight + current_weight * stage_progress) / sum(s["weight"] for s in stages.values())
+            
+            # Update the progress bar
+            progress(absolute_progress, stages[stage]["message"])
+            
+        # Start preparation stage
+        update_progress("prepare", 1.0)
+        
+        # Start generation stage
+        update_progress("generate", 0.0)
 
-        # Map style_type from UI to API format
-        # The API providers will handle the proper mapping of style_type values
-
+        # Generate the image using the appropriate provider
+        # Create a progress wrapper to map image generation progress (0.0-1.0) to our generation stage (0.0-1.0)
+        class ProgressWrapper:
+            def __call__(self, value, message=""):
+                # Map the value from the image generation (0.0-1.0) to our generation stage progress
+                update_progress("generate", value)
+                
         # Generate the image using the appropriate provider
         generated_image = generate_image(
             prompt=prompt,
@@ -61,15 +93,24 @@ def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="
             magic_prompt_option=magic_prompt_option,
             style_type=style_type,
             provider_name=provider_name,
-            progress=progress
+            progress=ProgressWrapper()
         )
-
-        # Update progress
-        progress(0.4, "Image generation complete, starting vectorization...")
-
-        # Process the generated image
-        svg_path, svg_html, message = process_image_internal(generated_image, progress, start_progress=0.4)
-
+        
+        # Ensure we're at 100% for the generation stage
+        update_progress("generate", 1.0)
+        
+        # Start vectorization stage
+        update_progress("vectorize", 0.0)
+        
+        # Create a progress wrapper for the vectorization stage
+        class VectorizationProgressWrapper:
+            def __call__(self, value, message=""):
+                # Map the value from vectorization progress (0.0-1.0) to our vectorization stage (0.0-1.0)
+                update_progress("vectorize", value)
+        
+        # Process the generated image with our custom progress wrapper
+        svg_path, svg_html, message = process_image_internal(generated_image, VectorizationProgressWrapper())
+        
         # Return the results
         return generated_image, svg_path, svg_html, message
 
@@ -97,6 +138,20 @@ def process_image(image, progress=gr.Progress()):
     Returns:
         tuple: (svg_path, svg_html, message)
     """
+    # Check if the image is too large
+    if image is not None:
+        # Check dimensions
+        MAX_DIMENSION = 4000  # Limit image to 4000x4000 pixels
+        width, height = image.size
+        if width > MAX_DIMENSION or height > MAX_DIMENSION:
+            return None, None, f"❌ ERROR: Image is too large. Maximum dimensions allowed are {MAX_DIMENSION}x{MAX_DIMENSION} pixels. Your image is {width}x{height} pixels."
+        
+        # Check file size (calculate approximate size in memory)
+        estimated_size_mb = (width * height * 3) / (1024 * 1024)  # 3 bytes per pixel (RGB)
+        MAX_SIZE_MB = 10  # 10MB limit
+        if estimated_size_mb > MAX_SIZE_MB:
+            return None, None, f"❌ ERROR: Image is too large. Maximum file size allowed is {MAX_SIZE_MB}MB. Your image is approximately {estimated_size_mb:.2f}MB."
+    
     return process_image_internal(image, progress)
 
 def process_image_internal(image, progress=gr.Progress(), start_progress=0.0):
@@ -118,6 +173,38 @@ def process_image_internal(image, progress=gr.Progress(), start_progress=0.0):
         return None, None, "❌ ERROR: No image uploaded. Please upload an image first."
 
     try:
+        # Define progress stages and their relative weights
+        stages = {
+            "save": {"weight": 0.1, "message": "Saving and validating image..."},
+            "vectorize": {"weight": 0.5, "message": "Vectorizing image..."},
+            "download": {"weight": 0.3, "message": "Downloading SVG..."},
+            "finalize": {"weight": 0.1, "message": "Finalizing output..."}
+        }
+        
+        # Function to calculate weighted progress
+        def update_progress(stage, stage_progress=1.0):
+            # Calculate the beginning and end progress values for this stage
+            stage_keys = list(stages.keys())
+            stage_idx = stage_keys.index(stage)
+            
+            # Sum of weights up to this stage
+            previous_weight = sum(stages[stage_keys[i]]["weight"] for i in range(stage_idx))
+            
+            # Weight of the current stage
+            current_weight = stages[stage]["weight"]
+            
+            # Calculate the absolute progress (0.0 to 1.0)
+            absolute_progress = start_progress + (
+                (previous_weight + current_weight * stage_progress) / 
+                sum(s["weight"] for s in stages.values())
+            ) * (1.0 - start_progress)
+            
+            # Update the progress bar
+            progress(absolute_progress, stages[stage]["message"])
+        
+        # Start the first stage - save and validate
+        update_progress("save", 0.0)
+        
         # Generate unique filenames based on timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -128,6 +215,7 @@ def process_image_internal(image, progress=gr.Progress(), start_progress=0.0):
         # Ensure the image is saved
         try:
             image.save(input_path)
+            update_progress("save", 0.5)
         except Exception as e:
             return None, None, f"❌ ERROR: Failed to save uploaded image: {str(e)}"
 
@@ -139,24 +227,21 @@ def process_image_internal(image, progress=gr.Progress(), start_progress=0.0):
         try:
             with Image.open(input_path) as img:
                 img.verify()  # Verify it's a valid image
+            update_progress("save", 1.0)
         except Exception:
             os.remove(input_path)  # Clean up invalid file
             return None, None, "❌ ERROR: The uploaded file is not a valid image."
 
-        # Calculate adjusted progress values
-        progress_start = start_progress
-        progress_mid = start_progress + (1.0 - start_progress) * 0.5
-        progress_end = start_progress + (1.0 - start_progress) * 0.9
-
-        # Update progress
-        progress(progress_start, "Image ready, starting vectorization...")
-
+        # Start vectorization stage
+        update_progress("vectorize", 0.0)
+        
         # Vectorize the image
         svg_url = vectorize_image(input_path)
+        update_progress("vectorize", 1.0)
 
-        # Update progress
-        progress(progress_mid, "Vectorization complete, downloading SVG...")
-
+        # Start download stage
+        update_progress("download", 0.0)
+        
         # Generate output path in the vectors directory
         output_filename = f"vector_{timestamp}.svg"
         output_path = os.path.join(VECTORS_DIR, output_filename)
@@ -165,16 +250,18 @@ def process_image_internal(image, progress=gr.Progress(), start_progress=0.0):
         success = download_svg(svg_url, output_path)
         if not success:
             return None, None, f"❌ ERROR: Failed to download SVG from URL: {svg_url}"
+        update_progress("download", 1.0)
 
+        # Start final stage
+        update_progress("finalize", 0.0)
+        
         # For debugging
         file_size = os.path.getsize(output_path)
         print(f"SVG file size: {file_size} bytes")
 
         # Create HTML to display the SVG properly
         svg_html = create_svg_preview_html(output_path)
-
-        # Update progress
-        progress(progress_end, "Process complete!")
+        update_progress("finalize", 1.0)
 
         # Create a more informative success message with better formatting for the UI
         success_message = (
@@ -215,9 +302,40 @@ def create_svg_preview_html(svg_path):
         str: HTML code to display the SVG
     """
     try:
+        # Check if the file exists
+        if not os.path.exists(svg_path):
+            return f"""
+            <div style="width:100%; height:100%; display:flex; justify-content:center; align-items:center; background-color:#f5f5f5; border-radius:8px; padding:10px;">
+                <p style="color:red;">Error: SVG file not found at path: {svg_path}</p>
+            </div>
+            """
+            
+        # Check if the file is readable and not empty
+        if not os.access(svg_path, os.R_OK):
+            return f"""
+            <div style="width:100%; height:100%; display:flex; justify-content:center; align-items:center; background-color:#f5f5f5; border-radius:8px; padding:10px;">
+                <p style="color:red;">Error: SVG file is not readable: {svg_path}</p>
+            </div>
+            """
+            
+        if os.path.getsize(svg_path) == 0:
+            return f"""
+            <div style="width:100%; height:100%; display:flex; justify-content:center; align-items:center; background-color:#f5f5f5; border-radius:8px; padding:10px;">
+                <p style="color:red;">Error: SVG file is empty: {svg_path}</p>
+            </div>
+            """
+            
         # Read the SVG file
         with open(svg_path, 'r') as f:
             svg_content = f.read()
+
+        # Basic validation of SVG content
+        if not svg_content.strip().startswith('<svg') and not '<?xml' in svg_content[:100]:
+            return f"""
+            <div style="width:100%; height:100%; display:flex; justify-content:center; align-items:center; background-color:#f5f5f5; border-radius:8px; padding:10px;">
+                <p style="color:red;">Error: File does not appear to be a valid SVG: {svg_path}</p>
+            </div>
+            """
 
         # Create HTML with the SVG embedded
         html = f"""
@@ -256,7 +374,9 @@ with gr.Blocks(title="Ideogram to Vector", theme=gr.themes.Soft()) as app:
                         label="",
                         elem_id="input-image",
                         height=300,
-                        image_mode="RGB"
+                        image_mode="RGB",
+                        # Add tooltips about size limits
+                        info="Maximum dimensions: 4000x4000 pixels, Maximum size: 10MB"
                     )
                     vectorize_button = gr.Button(
                         "🔄 Vectorize Image",
@@ -310,8 +430,8 @@ with gr.Blocks(title="Ideogram to Vector", theme=gr.themes.Soft()) as app:
                     # Add style type dropdown
                     style_type = gr.Dropdown(
                         label="Style Type",
-                        choices=["None", "Auto", "General", "Realistic", "Design"],
-                        value="None",
+                        choices=["auto", "general", "realistic", "design", "none"],
+                        value="auto",
                         elem_id="style-type",
                         info="The style helps define the specific aesthetic of the image"
                     )

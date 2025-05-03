@@ -6,7 +6,7 @@ from api_provider import get_provider
 # Load environment variables
 load_dotenv()
 
-def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="AUTO", provider_name=None, progress=None):
+def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="auto", provider_name=None, progress=None):
     """
     Generate an image using Ideogram v3 model via the configured API provider
 
@@ -14,7 +14,8 @@ def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style
         prompt (str): Text prompt describing the image to generate
         aspect_ratio (str): Aspect ratio of the generated image (e.g., "1:1", "16:9", "3:2")
         magic_prompt_option (str): Magic prompt option ("Auto", "On", "Off")
-        style_type (str): Style type to use ("AUTO", "GENERAL", "REALISTIC", "DESIGN")
+        style_type (str): Style type to use ("auto", "general", "realistic", "design", "none")
+                         Case-insensitive, will be normalized by provider-specific mappers
         provider_name (str, optional): Name of the preferred provider ("replicate" or "fal")
         progress: Optional progress callback function
 
@@ -40,10 +41,11 @@ def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style
         - "Off": Use the prompt as-is
 
         Style Type options:
-        - "AUTO": Automatically select the style
-        - "GENERAL": General style
-        - "REALISTIC": Realistic style
-        - "DESIGN": Design style
+        - "auto": Automatically select the style
+        - "general": General style
+        - "realistic": Realistic style
+        - "design": Design style
+        - "none": No specific style (maps to auto for some providers)
     """
     # Get the appropriate provider
     provider = get_provider(provider_name)
@@ -136,13 +138,13 @@ if __name__ == "__main__":
         style_choice = input("Choose a Style Type (1-4, default: 1): ").strip() or "1"
 
         style_type_map = {
-            "1": "AUTO",
-            "2": "GENERAL",
-            "3": "REALISTIC",
-            "4": "DESIGN"
+            "1": "auto",
+            "2": "general",
+            "3": "realistic",
+            "4": "design"
         }
 
-        style_type = style_type_map.get(style_choice, "AUTO")
+        style_type = style_type_map.get(style_choice, "auto")
 
         # Generate image
         print(f"\nGenerating image with Ideogram v3 model...")

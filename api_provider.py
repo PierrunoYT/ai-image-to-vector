@@ -1,9 +1,17 @@
 import os
 import replicate
+import logging
 from dotenv import load_dotenv
 from PIL import Image
 from io import BytesIO
 import requests
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('image_to_vector.api_provider')
 
 # Load environment variables
 load_dotenv()
@@ -17,7 +25,7 @@ class APIProvider:
     def __init__(self):
         self.name = "Base Provider"
 
-    def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="Auto", progress=None):
+    def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="auto", progress=None):
         """
         Generate an image using the provider's API
 
@@ -25,7 +33,8 @@ class APIProvider:
             prompt (str): Text prompt describing the image to generate
             aspect_ratio (str): Aspect ratio of the generated image (e.g., "1:1", "16:9", "3:2")
             magic_prompt_option (str): Magic prompt option ("Auto", "On", "Off")
-            style_type (str): Style type to use ("None", "Auto", "General", "Realistic", "Design")
+            style_type (str): Style type to use ("auto", "general", "realistic", "design", "none")
+                             Case-insensitive, will be normalized by provider-specific mappers
             progress: Optional progress callback function
 
         Returns:
@@ -37,7 +46,7 @@ class APIProvider:
             try:
                 progress(0.2, "Starting image generation...")
             except Exception as e:
-                print(f"Warning: Error updating progress: {e}")
+                logger.warning(f"Error updating progress: {e}")
         raise NotImplementedError("This method must be implemented by subclasses")
 
     def is_configured(self):
@@ -61,26 +70,25 @@ class ReplicateProvider(APIProvider):
         Map style type to the format expected by Replicate API
 
         Args:
-            style_type (str): Style type from the UI ("AUTO", "GENERAL", "REALISTIC", "DESIGN")
+            style_type (str): Style type from the UI (case-insensitive)
 
         Returns:
             str: Style type in the format expected by Replicate API ("None", "Auto", "General", "Realistic", "Design")
         """
-        # Map to the format expected by Replicate API
+        # Map to the format expected by Replicate API (which uses title case)
         style_map = {
-            "AUTO": "Auto",
-            "GENERAL": "General",
-            "REALISTIC": "Realistic",
-            "DESIGN": "Design",
-            "NONE": "None",
-            "None": "None"
+            "auto": "Auto",
+            "general": "General",
+            "realistic": "Realistic",
+            "design": "Design",
+            "none": "None"
         }
 
-        # Convert to title case for case-insensitive matching
-        style_key = style_type.upper() if style_type else "AUTO"
+        # Convert to lowercase for case-insensitive matching
+        style_key = style_type.lower() if style_type else "auto"
         return style_map.get(style_key, "Auto")
 
-    def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="AUTO", progress=None):
+    def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="auto", progress=None):
         """
         Generate an image using Ideogram v3 Quality model via Replicate API
 
@@ -107,7 +115,7 @@ class ReplicateProvider(APIProvider):
             try:
                 progress(0.2, "Starting image generation with Replicate...")
             except Exception as e:
-                print(f"Warning: Error updating progress: {e}")
+                logger.warning(f"Error updating progress: {e}")
 
         try:
             # Map style_type to the format expected by Replicate API
@@ -117,7 +125,14 @@ class ReplicateProvider(APIProvider):
             # Note: The Replicate API response format can vary depending on the version of the replicate-python client
             # We explicitly set use_file_output=False to get URL strings instead of FileOutput objects
             # This ensures consistent behavior across different versions of the replicate-python client
-            output = replicate.run(
+            
+            # Initialize the Replicate client with a timeout
+            replicate_client = replicate.Client(
+                api_token=self.api_key,
+                timeout=120  # 2 minute timeout for the API call
+            )
+            
+            output = replicate_client.run(
                 "ideogram-ai/ideogram-v3-quality",
                 input={
                     "prompt": prompt,
@@ -134,19 +149,19 @@ class ReplicateProvider(APIProvider):
                 try:
                     progress(0.7, "Image generated, downloading...")
                 except Exception as e:
-                    print(f"Warning: Error updating progress: {e}")
+                    logger.warning(f"Error updating progress: {e}")
 
             # Process the response from Replicate API
             # With use_file_output=False, the output should be a URL string or a list of URL strings
 
-            # Print debug information
-            print(f"DEBUG: Replicate API response type: {type(output)}")
-            print(f"DEBUG: Replicate API response: {output}")
+            # Log debug information
+            logger.debug(f"Replicate API response type: {type(output)}")
+            logger.debug(f"Replicate API response: {output}")
 
             # Case 1: Output is a list of URL strings
             if output and isinstance(output, list) and len(output) > 0:
                 image_url = output[0]
-                print(f"DEBUG: Processing as list, first item: {image_url}")
+                logger.debug(f"Processing as list, first item: {image_url}")
 
                 # Download the image from URL
                 try:
@@ -156,10 +171,10 @@ class ReplicateProvider(APIProvider):
                     # Convert to PIL Image
                     image = Image.open(BytesIO(response.content))
                 except requests.exceptions.RequestException as e:
-                    print(f"DEBUG: Error downloading image from URL: {e}")
+                    logger.error(f"Error downloading image from URL: {e}")
                     raise ValueError(f"Failed to download image from URL: {image_url}. Error: {e}")
                 except Exception as e:
-                    print(f"DEBUG: Error processing image: {e}")
+                    logger.error(f"Error processing image: {e}")
                     raise ValueError(f"Failed to process image from URL: {image_url}. Error: {e}")
 
                 # Update progress if provided
@@ -167,13 +182,13 @@ class ReplicateProvider(APIProvider):
                     try:
                         progress(1.0, "Image generation complete!")
                     except Exception as e:
-                        print(f"Warning: Error updating progress: {e}")
+                        logger.warning(f"Error updating progress: {e}")
 
                 return image
 
             # Case 2: Output is a direct URL string
             elif output and isinstance(output, str):
-                print(f"DEBUG: Processing as string URL: {output}")
+                logger.debug(f"Processing as string URL: {output}")
 
                 # Download the image from URL
                 try:
@@ -183,10 +198,10 @@ class ReplicateProvider(APIProvider):
                     # Convert to PIL Image
                     image = Image.open(BytesIO(response.content))
                 except requests.exceptions.RequestException as e:
-                    print(f"DEBUG: Error downloading image from URL: {e}")
+                    logger.error(f"Error downloading image from URL: {e}")
                     raise ValueError(f"Failed to download image from URL: {output}. Error: {e}")
                 except Exception as e:
-                    print(f"DEBUG: Error processing image: {e}")
+                    logger.error(f"Error processing image: {e}")
                     raise ValueError(f"Failed to process image from URL: {output}. Error: {e}")
 
                 # Update progress if provided
@@ -194,17 +209,17 @@ class ReplicateProvider(APIProvider):
                     try:
                         progress(1.0, "Image generation complete!")
                     except Exception as e:
-                        print(f"Warning: Error updating progress: {e}")
+                        logger.warning(f"Error updating progress: {e}")
 
                 return image
 
             # If none of the above formats match, raise an error
             else:
-                print(f"DEBUG: Failed to process output, type: {type(output)}, value: {output}")
+                logger.error(f"Failed to process output, type: {type(output)}, value: {output}")
                 raise ValueError(f"Unexpected response format from Replicate API: {output}")
 
         except Exception as e:
-            print(f"Error during image generation with Replicate: {e}")
+            logger.error(f"Error during image generation with Replicate: {e}")
             raise
 
 
@@ -244,26 +259,25 @@ class FalProvider(APIProvider):
         Map style type to the format expected by Fal.ai API
 
         Args:
-            style_type (str): Style type from the UI ("None", "Auto", "General", "Realistic", "Design")
+            style_type (str): Style type from the UI (case-insensitive)
 
         Returns:
-            str: Style type in the format expected by Fal.ai API
+            str: Style type in the format expected by Fal.ai API (uppercase)
         """
         # Map to the format expected by Fal.ai API (which uses uppercase)
         style_map = {
-            "AUTO": "AUTO",
-            "GENERAL": "GENERAL",
-            "REALISTIC": "REALISTIC",
-            "DESIGN": "DESIGN",
-            "NONE": "AUTO",  # Map "NONE" to "AUTO" for Fal.ai
-            "None": "AUTO"   # Map "None" to "AUTO" for Fal.ai
+            "auto": "AUTO",
+            "general": "GENERAL",
+            "realistic": "REALISTIC",
+            "design": "DESIGN",
+            "none": "AUTO"  # Map "none" to "AUTO" for Fal.ai as it doesn't support "None"
         }
 
-        # Convert to uppercase for case-insensitive matching
-        style_key = style_type.upper() if style_type else "AUTO"
+        # Convert to lowercase for case-insensitive matching
+        style_key = style_type.lower() if style_type else "auto"
         return style_map.get(style_key, "AUTO")
 
-    def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="AUTO", progress=None):
+    def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="auto", progress=None):
         """
         Generate an image using Ideogram v3 model via Fal.ai API
 
@@ -290,7 +304,7 @@ class FalProvider(APIProvider):
             try:
                 progress(0.2, "Starting image generation with Fal.ai...")
             except Exception as e:
-                print(f"Warning: Error updating progress: {e}")
+                logger.warning(f"Error updating progress: {e}")
 
         try:
             # Import fal_client here to avoid import errors if not installed
@@ -299,8 +313,8 @@ class FalProvider(APIProvider):
             except ImportError:
                 raise ImportError("Fal.ai client not installed. Please install it with 'pip install fal-client'")
 
-            # Set the API key
-            os.environ["FAL_KEY"] = self.api_key
+            # Use the API key in the client configuration instead of modifying environment variables
+            fal_client.configure(api_key=self.api_key)
 
             # Map parameters to Fal.ai format
             image_size = self._map_aspect_ratio_to_image_size(aspect_ratio)
@@ -336,16 +350,16 @@ class FalProvider(APIProvider):
                 try:
                     progress(0.7, "Image generated, downloading...")
                 except Exception as e:
-                    print(f"Warning: Error updating progress: {e}")
+                    logger.warning(f"Error updating progress: {e}")
 
             # Process the result
-            # Print debug information
-            print(f"DEBUG: Fal.ai API response type: {type(result)}")
-            print(f"DEBUG: Fal.ai API response: {result}")
+            # Log debug information
+            logger.debug(f"Fal.ai API response type: {type(result)}")
+            logger.debug(f"Fal.ai API response: {result}")
 
             if result and "images" in result and len(result["images"]) > 0:
                 image_url = result["images"][0]["url"]
-                print(f"DEBUG: Processing Fal.ai image URL: {image_url}")
+                logger.debug(f"Processing Fal.ai image URL: {image_url}")
 
                 # Download the image
                 try:
@@ -355,10 +369,10 @@ class FalProvider(APIProvider):
                     # Convert to PIL Image
                     image = Image.open(BytesIO(response.content))
                 except requests.exceptions.RequestException as e:
-                    print(f"DEBUG: Error downloading image from Fal.ai URL: {e}")
+                    logger.error(f"Error downloading image from Fal.ai URL: {e}")
                     raise ValueError(f"Failed to download image from Fal.ai URL: {image_url}. Error: {e}")
                 except Exception as e:
-                    print(f"DEBUG: Error processing Fal.ai image: {e}")
+                    logger.error(f"Error processing Fal.ai image: {e}")
                     raise ValueError(f"Failed to process image from Fal.ai URL: {image_url}. Error: {e}")
 
                 # Update progress if provided
@@ -366,15 +380,15 @@ class FalProvider(APIProvider):
                     try:
                         progress(1.0, "Image generation complete!")
                     except Exception as e:
-                        print(f"Warning: Error updating progress: {e}")
+                        logger.warning(f"Error updating progress: {e}")
 
                 return image
             else:
-                print(f"DEBUG: Failed to process Fal.ai result: {result}")
+                logger.error(f"Failed to process Fal.ai result: {result}")
                 raise ValueError(f"Unexpected response format from Fal.ai API: {result}")
 
         except Exception as e:
-            print(f"Error during image generation with Fal.ai: {e}")
+            logger.error(f"Error during image generation with Fal.ai: {e}")
             raise
 
 
@@ -477,13 +491,13 @@ if __name__ == "__main__":
         style_choice = input("Choose a Style Type (1-4, default: 1): ").strip() or "1"
 
         style_type_map = {
-            "1": "AUTO",
-            "2": "GENERAL",
-            "3": "REALISTIC",
-            "4": "DESIGN"
+            "1": "auto",
+            "2": "general",
+            "3": "realistic",
+            "4": "design"
         }
 
-        style_type = style_type_map.get(style_choice, "AUTO")
+        style_type = style_type_map.get(style_choice, "auto")
 
         # Generate image
         print(f"\nGenerating image with {provider.name} using Ideogram v3 model...")
