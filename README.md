@@ -1,8 +1,8 @@
-# Ideogram to Vector
+# Image to Vector
 
-A tool to generate images with Ideogram v3 and vectorize them using the Recraft API. Includes both a command-line interface and a web-based UI powered by Gradio.
+A tool to generate images with OpenAI GPT-Image-1, DALL-E 3, or Ideogram v3 and vectorize them using the Recraft API. Includes both a command-line interface and a web-based UI powered by Gradio.
 
-This tool uses the latest Ideogram v3 model from either Replicate or Fal.ai to create high-quality images from text prompts, and then converts them to scalable vector graphics (SVG) using the Recraft API.
+This tool uses OpenAI's GPT-Image-1 model, DALL-E 3, or the latest Ideogram v3 model from either Replicate or Fal.ai to create high-quality images from text prompts, and then converts them to scalable vector graphics (SVG) using the Recraft API.
 
 ## Setup
 
@@ -14,30 +14,32 @@ This tool uses the latest Ideogram v3 model from either Replicate or Fal.ai to c
 2. Create a `.env` file in the same directory as the script with your API tokens:
    ```
    RECRAFT_API_TOKEN=your_recraft_token_here
+   OPENAI_API_KEY=your_openai_api_key_here
    REPLICATE_API_TOKEN=your_replicate_token_here
    FAL_KEY=your_fal_api_key_here
    ```
    You can use the `.env.example` file as a template.
 
    - Get your Recraft API token from [Recraft](https://recraft.ai)
+   - Get your OpenAI API key from [OpenAI](https://platform.openai.com/api-keys)
    - Get your Replicate API token from [Replicate](https://replicate.com/account/api-tokens)
    - Get your Fal.ai API key from [Fal.ai](https://fal.ai/dashboard/keys)
 
-   Note: You only need either the Replicate API token OR the Fal.ai API key for image generation, but the Recraft API token is required for vectorization.
+   Note: You only need one of the image generation API keys (OpenAI, Replicate, or Fal.ai) for image generation, but the Recraft API token is required for vectorization.
 
 ## Usage
 
 ### Command Line Interface
 
-#### Generate an image with Ideogram v3:
-```
+#### Generate an image with AI
+```bash
 python ideogram_generator.py
 ```
 
-The script will prompt you to choose an API provider (Replicate or Fal.ai), enter a text prompt, and select various options. After processing, it will generate an image and save it to the current directory.
+The script will prompt you to choose an API provider (OpenAI, Replicate, or Fal.ai), enter a text prompt, and select various options. After processing, it will generate an image and save it to the current directory. When using OpenAI, the system will try GPT-Image-1 first and fall back to DALL-E 3 if needed.
 
-#### Vectorize an existing image:
-```
+#### Vectorize an existing image
+```bash
 python recraft_vectorizer.py
 ```
 
@@ -46,24 +48,26 @@ The script will prompt you to enter the path to your image file. After processin
 ### Web UI (Gradio)
 
 Run the Gradio web interface:
-```
+```bash
 python gradio_app.py
 ```
 
-This will start a local web server (typically at http://127.0.0.1:7860) where you can:
+This will start a local web server (typically at [http://127.0.0.1:7860](http://127.0.0.1:7860)) where you can:
 
-#### Upload Image Tab:
+#### Upload Image Tab
+
 1. Upload an image through the browser
 2. Click the "Vectorize Image" button
 3. View the vectorized SVG directly in the preview area
 4. Download the resulting SVG file
 
-#### Generate Image Tab:
+#### Generate Image Tab
+
 1. Enter a text prompt describing the image you want to create
 2. Choose an aspect ratio for your image (e.g., 1:1, 16:9, 3:2)
 3. Select a Magic Prompt option (Auto, On, Off)
 4. Choose a Style Type (None, Auto, General, Realistic, Design)
-5. Select an API Provider (Auto, Replicate, Fal.ai)
+5. Select an API Provider (Auto, OpenAI, Replicate, Fal.ai)
 6. Click the "Generate & Vectorize" button
 7. Wait for the AI to generate your image and vectorize it
 8. View the generated image and vectorized SVG in the preview areas
@@ -73,14 +77,16 @@ All uploaded and generated images are saved to the `output/uploads` directory, a
 
 ## Examples
 
-### Generating an image with Ideogram v3:
-```
+### Generating an image with AI
+
+```bash
 Available API providers:
 1. Auto (use first available provider)
 2. Replicate
 3. Fal.ai
-Choose an API provider (1-3, default: 1): 1
-Using Replicate as the API provider
+4. OpenAI
+Choose an API provider (1-4, default: 1): 4
+Using OpenAI as the API provider
 
 Enter a prompt to generate an image: A beautiful sunset over a mountain landscape
 
@@ -106,11 +112,11 @@ Style Type options:
 4. Design
 Choose a Style Type (1-4, default: 1): 3
 
-Generating image with Ideogram v3 model...
+Generating image with OpenAI using GPT-Image-1 model...
 Prompt: A beautiful sunset over a mountain landscape
 Aspect Ratio: 3:2
 Magic Prompt: Auto
-Style Type: REALISTIC
+Style Type: realistic
 ✅ Image successfully generated and saved to generated_image.png
 
 Next steps:
@@ -118,8 +124,9 @@ Next steps:
 2. To use the web interface, run: python gradio_app.py
 ```
 
-### Vectorizing an image:
-```
+### Vectorizing an image
+
+```bash
 Enter the path to your image file: generated_image.png
 Vectorizing image...
 Vectorization successful! SVG URL: https://example.com/vectorized.svg
@@ -130,14 +137,15 @@ SVG file successfully downloaded to generated_image_vectorized.svg
 
 ## Features
 
-- Generate high-quality images using Ideogram v3 model
-- Support for multiple API providers (Replicate and Fal.ai)
+- Generate high-quality images using OpenAI GPT-Image-1, DALL-E 3, or Ideogram v3 models
+- Support for multiple API providers (OpenAI, Replicate, and Fal.ai)
 - Vectorize images using Recraft API
 - User-friendly web interface with Gradio
 - Command-line interface for batch processing
 - Multiple aspect ratio options (square, landscape, portrait)
 - Magic Prompt optimization for better results
 - Various style types (None, Auto, General, Realistic, Design)
+- Transparent background support with GPT-Image-1
 - Download vectorized SVGs for use in design projects
 
 ## License

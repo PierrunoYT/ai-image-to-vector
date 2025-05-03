@@ -1,6 +1,4 @@
-import os
 from dotenv import load_dotenv
-from PIL import Image
 from api_provider import get_provider
 
 # Load environment variables
@@ -8,7 +6,7 @@ load_dotenv()
 
 def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="auto", provider_name=None, progress=None):
     """
-    Generate an image using Ideogram v3 model via the configured API provider
+    Generate an image using OpenAI GPT-Image-1, DALL-E 3, or Ideogram v3 via the configured API provider
 
     Args:
         prompt (str): Text prompt describing the image to generate
@@ -16,7 +14,7 @@ def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style
         magic_prompt_option (str): Magic prompt option ("Auto", "On", "Off")
         style_type (str): Style type to use ("auto", "general", "realistic", "design", "none")
                          Case-insensitive, will be normalized by provider-specific mappers
-        provider_name (str, optional): Name of the preferred provider ("replicate" or "fal")
+        provider_name (str, optional): Name of the preferred provider ("openai", "replicate", or "fal")
         progress: Optional progress callback function
 
     Returns:
@@ -27,8 +25,12 @@ def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style
         Exception: For other errors during image generation
 
     Notes:
-        This function uses either the Replicate or Fal.ai API for Ideogram v3 model.
-        The model generates high-quality images based on text prompts.
+        This function uses one of the following APIs for image generation:
+        - OpenAI API (GPT-Image-1 or DALL-E 3)
+        - Replicate API (Ideogram v3)
+        - Fal.ai API (Ideogram v3)
+
+        The models generate high-quality images based on text prompts.
 
         Available aspect ratios:
         - Square: "1:1"
@@ -45,7 +47,7 @@ def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style
         - "general": General style
         - "realistic": Realistic style
         - "design": Design style
-        - "none": No specific style (maps to auto for some providers)
+        - "none": No specific style (maps to auto for some providers, transparent background for GPT-Image-1)
     """
     # Get the appropriate provider
     provider = get_provider(provider_name)
@@ -59,15 +61,17 @@ if __name__ == "__main__":
         # Prompt for the API provider
         print("Available API providers:")
         print("1. Auto (use first available provider)")
-        print("2. Replicate")
-        print("3. Fal.ai")
+        print("2. OpenAI (GPT-Image-1/DALL-E 3)")
+        print("3. Replicate")
+        print("4. Fal.ai")
 
-        provider_choice = input("Choose an API provider (1-3, default: 1): ").strip() or "1"
+        provider_choice = input("Choose an API provider (1-4, default: 1): ").strip() or "1"
 
         provider_map = {
             "1": None,  # Auto
-            "2": "replicate",
-            "3": "fal"
+            "2": "openai",
+            "3": "replicate",
+            "4": "fal"
         }
 
         provider_name = provider_map.get(provider_choice)
@@ -147,7 +151,7 @@ if __name__ == "__main__":
         style_type = style_type_map.get(style_choice, "auto")
 
         # Generate image
-        print(f"\nGenerating image with Ideogram v3 model...")
+        print(f"\nGenerating image with {provider.name}...")
         print(f"Prompt: {prompt}")
         print(f"Aspect Ratio: {aspect_ratio}")
         print(f"Magic Prompt: {magic_prompt_option}")

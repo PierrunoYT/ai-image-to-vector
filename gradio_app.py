@@ -16,6 +16,7 @@ load_dotenv()
 recraft_api_key = os.getenv("RECRAFT_API_TOKEN")
 replicate_api_key = os.getenv("REPLICATE_API_TOKEN")
 fal_api_key = os.getenv("FAL_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
 
 # Create output directories if they don't exist
 OUTPUT_DIR = "output"
@@ -34,15 +35,15 @@ def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="
         aspect_ratio: Aspect ratio of the generated image (e.g., "1:1", "16:9", "3:2")
         magic_prompt_option: Magic prompt option ("Auto", "On", "Off")
         style_type: Style type to use ("auto", "general", "realistic", "design", "none")
-        provider_name: Name of the preferred provider ("replicate" or "fal")
+        provider_name: Name of the preferred provider ("openai", "replicate", or "fal")
         progress: Gradio progress indicator
 
     Returns:
         tuple: (generated_image, svg_path, svg_html, message)
     """
     # Check if any API provider is available
-    if not replicate_api_key and not fal_api_key:
-        return None, None, None, "❌ ERROR: No API provider configured!\n\nPlease create a .env file with either REPLICATE_API_TOKEN or FAL_KEY.\nSee the instructions for more details."
+    if not openai_api_key and not replicate_api_key and not fal_api_key:
+        return None, None, None, "❌ ERROR: No API provider configured!\n\nPlease create a .env file with either OPENAI_API_KEY, REPLICATE_API_TOKEN, or FAL_KEY.\nSee the instructions for more details."
 
     if not prompt or not prompt.strip():
         return None, None, None, "❌ ERROR: No prompt provided. Please enter a text prompt to generate an image."
@@ -54,28 +55,28 @@ def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="
             "generate": {"weight": 0.35, "message": "Generating image..."},
             "vectorize": {"weight": 0.6, "message": "Vectorizing image..."}
         }
-        
+
         # Function to calculate weighted progress
         def update_progress(stage, stage_progress=1.0):
             # Calculate the beginning and end progress values for this stage
             stage_keys = list(stages.keys())
             stage_idx = stage_keys.index(stage)
-            
+
             # Sum of weights up to this stage
             previous_weight = sum(stages[stage_keys[i]]["weight"] for i in range(stage_idx))
-            
+
             # Weight of the current stage
             current_weight = stages[stage]["weight"]
-            
+
             # Calculate the absolute progress (0.0 to 1.0)
             absolute_progress = (previous_weight + current_weight * stage_progress) / sum(s["weight"] for s in stages.values())
-            
+
             # Update the progress bar
             progress(absolute_progress, stages[stage]["message"])
-            
+
         # Start preparation stage
         update_progress("prepare", 1.0)
-        
+
         # Start generation stage
         update_progress("generate", 0.0)
 
@@ -85,7 +86,7 @@ def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="
             def __call__(self, value, message=""):
                 # Map the value from the image generation (0.0-1.0) to our generation stage progress
                 update_progress("generate", value)
-                
+
         # Generate the image using the appropriate provider
         generated_image = generate_image(
             prompt=prompt,
@@ -95,22 +96,22 @@ def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="
             provider_name=provider_name,
             progress=ProgressWrapper()
         )
-        
+
         # Ensure we're at 100% for the generation stage
         update_progress("generate", 1.0)
-        
+
         # Start vectorization stage
         update_progress("vectorize", 0.0)
-        
+
         # Create a progress wrapper for the vectorization stage
         class VectorizationProgressWrapper:
             def __call__(self, value, message=""):
                 # Map the value from vectorization progress (0.0-1.0) to our vectorization stage (0.0-1.0)
                 update_progress("vectorize", value)
-        
+
         # Process the generated image with our custom progress wrapper
         svg_path, svg_html, message = process_image_internal(generated_image, VectorizationProgressWrapper())
-        
+
         # Return the results
         return generated_image, svg_path, svg_html, message
 
@@ -145,13 +146,13 @@ def process_image(image, progress=gr.Progress()):
         width, height = image.size
         if width > MAX_DIMENSION or height > MAX_DIMENSION:
             return None, None, f"❌ ERROR: Image is too large. Maximum dimensions allowed are {MAX_DIMENSION}x{MAX_DIMENSION} pixels. Your image is {width}x{height} pixels."
-        
+
         # Check file size (calculate approximate size in memory)
         estimated_size_mb = (width * height * 3) / (1024 * 1024)  # 3 bytes per pixel (RGB)
         MAX_SIZE_MB = 10  # 10MB limit
         if estimated_size_mb > MAX_SIZE_MB:
             return None, None, f"❌ ERROR: Image is too large. Maximum file size allowed is {MAX_SIZE_MB}MB. Your image is approximately {estimated_size_mb:.2f}MB."
-    
+
     return process_image_internal(image, progress)
 
 def process_image_internal(image, progress=gr.Progress(), start_progress=0.0):
@@ -180,31 +181,31 @@ def process_image_internal(image, progress=gr.Progress(), start_progress=0.0):
             "download": {"weight": 0.3, "message": "Downloading SVG..."},
             "finalize": {"weight": 0.1, "message": "Finalizing output..."}
         }
-        
+
         # Function to calculate weighted progress
         def update_progress(stage, stage_progress=1.0):
             # Calculate the beginning and end progress values for this stage
             stage_keys = list(stages.keys())
             stage_idx = stage_keys.index(stage)
-            
+
             # Sum of weights up to this stage
             previous_weight = sum(stages[stage_keys[i]]["weight"] for i in range(stage_idx))
-            
+
             # Weight of the current stage
             current_weight = stages[stage]["weight"]
-            
+
             # Calculate the absolute progress (0.0 to 1.0)
             absolute_progress = start_progress + (
-                (previous_weight + current_weight * stage_progress) / 
+                (previous_weight + current_weight * stage_progress) /
                 sum(s["weight"] for s in stages.values())
             ) * (1.0 - start_progress)
-            
+
             # Update the progress bar
             progress(absolute_progress, stages[stage]["message"])
-        
+
         # Start the first stage - save and validate
         update_progress("save", 0.0)
-        
+
         # Generate unique filenames based on timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -234,14 +235,14 @@ def process_image_internal(image, progress=gr.Progress(), start_progress=0.0):
 
         # Start vectorization stage
         update_progress("vectorize", 0.0)
-        
+
         # Vectorize the image
         svg_url = vectorize_image(input_path)
         update_progress("vectorize", 1.0)
 
         # Start download stage
         update_progress("download", 0.0)
-        
+
         # Generate output path in the vectors directory
         output_filename = f"vector_{timestamp}.svg"
         output_path = os.path.join(VECTORS_DIR, output_filename)
@@ -254,7 +255,7 @@ def process_image_internal(image, progress=gr.Progress(), start_progress=0.0):
 
         # Start final stage
         update_progress("finalize", 0.0)
-        
+
         # For debugging
         file_size = os.path.getsize(output_path)
         print(f"SVG file size: {file_size} bytes")
@@ -309,7 +310,7 @@ def create_svg_preview_html(svg_path):
                 <p style="color:red;">Error: SVG file not found at path: {svg_path}</p>
             </div>
             """
-            
+
         # Check if the file is readable and not empty
         if not os.access(svg_path, os.R_OK):
             return f"""
@@ -317,14 +318,14 @@ def create_svg_preview_html(svg_path):
                 <p style="color:red;">Error: SVG file is not readable: {svg_path}</p>
             </div>
             """
-            
+
         if os.path.getsize(svg_path) == 0:
             return f"""
             <div style="width:100%; height:100%; display:flex; justify-content:center; align-items:center; background-color:#f5f5f5; border-radius:8px; padding:10px;">
                 <p style="color:red;">Error: SVG file is empty: {svg_path}</p>
             </div>
             """
-            
+
         # Read the SVG file
         with open(svg_path, 'r') as f:
             svg_content = f.read()
@@ -353,11 +354,11 @@ def create_svg_preview_html(svg_path):
         """
 
 # Create the Gradio interface with a nicer design
-with gr.Blocks(title="Ideogram to Vector", theme=gr.themes.Soft()) as app:
+with gr.Blocks(title="Image to Vector", theme=gr.themes.Soft()) as app:
     gr.Markdown(
         """
-        # 🖼️ Ideogram to Vector
-        ### Generate images with Ideogram v3 Quality and convert them to scalable vector graphics
+        # 🖼️ Image to Vector
+        ### Generate images with OpenAI GPT-Image-1, DALL-E 3, or Ideogram v3 and convert them to scalable vector graphics
         """
     )
 
@@ -439,10 +440,10 @@ with gr.Blocks(title="Ideogram to Vector", theme=gr.themes.Soft()) as app:
                     # Add provider selection dropdown
                     provider_name = gr.Dropdown(
                         label="API Provider",
-                        choices=["Auto", "Replicate", "Fal.ai"],
+                        choices=["Auto", "OpenAI (GPT-Image-1/DALL-E 3)", "Replicate", "Fal.ai"],
                         value="Auto",
                         elem_id="provider-name",
-                        info="Choose which API provider to use for image generation"
+                        info="Choose which API provider to use for image generation. OpenAI will try GPT-Image-1 first, then fall back to DALL-E 3 if needed."
                     )
 
                     generate_button = gr.Button(
@@ -518,9 +519,11 @@ with gr.Blocks(title="Ideogram to Vector", theme=gr.themes.Soft()) as app:
             - This tool requires valid API tokens to be set in the .env file:
               - Recraft API token for vectorization (required)
               - At least one of the following for image generation:
-                - Replicate API token (REPLICATE_API_TOKEN)
-                - Fal.ai API key (FAL_KEY)
+                - OpenAI API key (OPENAI_API_KEY) for GPT-Image-1 or DALL-E 3
+                - Replicate API token (REPLICATE_API_TOKEN) for Ideogram v3
+                - Fal.ai API key (FAL_KEY) for Ideogram v3
             - You can choose which API provider to use in the dropdown menu
+            - When using OpenAI, the system will try GPT-Image-1 first and fall back to DALL-E 3 if needed
             - All images are saved to the 'output/uploads' directory
             - All vectorized SVGs are saved to the 'output/vectors' directory
             """
@@ -555,13 +558,23 @@ def check_environment():
         issues.append("⚠️ Recraft API token not found! Please create a .env file with your RECRAFT_API_TOKEN.")
 
     # Check if at least one image generation API is available
-    if not replicate_api_key and not fal_api_key:
-        issues.append("⚠️ No image generation API configured! Please create a .env file with either REPLICATE_API_TOKEN or FAL_KEY.")
+    if not openai_api_key and not replicate_api_key and not fal_api_key:
+        issues.append("⚠️ No image generation API configured! Please create a .env file with either OPENAI_API_KEY, REPLICATE_API_TOKEN, or FAL_KEY.")
     else:
+        if not openai_api_key:
+            print("ℹ️ OpenAI API key not found. GPT-Image-1 and DALL-E 3 will not be available. Another provider will be used for image generation.")
+        else:
+            print("✅ OpenAI API key found. GPT-Image-1 and DALL-E 3 will be available for image generation.")
+
         if not replicate_api_key:
-            print("ℹ️ Replicate API token not found. Fal.ai will be used for image generation.")
+            print("ℹ️ Replicate API token not found. Ideogram v3 via Replicate will not be available.")
+        else:
+            print("✅ Replicate API token found. Ideogram v3 via Replicate will be available for image generation.")
+
         if not fal_api_key:
-            print("ℹ️ Fal.ai API key not found. Replicate will be used for image generation.")
+            print("ℹ️ Fal.ai API key not found. Ideogram v3 via Fal.ai will not be available.")
+        else:
+            print("✅ Fal.ai API key found. Ideogram v3 via Fal.ai will be available for image generation.")
 
     # Check if output directories exist and are writable
     for directory in [UPLOADS_DIR, VECTORS_DIR]:
