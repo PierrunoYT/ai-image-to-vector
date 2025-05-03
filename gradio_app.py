@@ -358,7 +358,7 @@ with gr.Blocks(title="Image to Vector", theme=gr.themes.Soft()) as app:
     gr.Markdown(
         """
         # 🖼️ Image to Vector
-        ### Generate images with OpenAI GPT-Image-1, DALL-E 3, or Ideogram v3 and convert them to scalable vector graphics
+        ### Generate images with OpenAI GPT-Image-1 or Ideogram v3 and convert them to scalable vector graphics
         """
     )
 
@@ -440,10 +440,10 @@ with gr.Blocks(title="Image to Vector", theme=gr.themes.Soft()) as app:
                     # Add provider selection dropdown
                     provider_name = gr.Dropdown(
                         label="API Provider",
-                        choices=["Auto", "OpenAI (GPT-Image-1/DALL-E 3)", "Replicate", "Fal.ai"],
+                        choices=["Auto", "OpenAI (GPT-Image-1)", "Replicate", "Fal.ai"],
                         value="Auto",
                         elem_id="provider-name",
-                        info="Choose which API provider to use for image generation. OpenAI will try GPT-Image-1 first, then fall back to DALL-E 3 if needed."
+                        info="Choose which API provider to use for image generation."
                     )
 
                     generate_button = gr.Button(
@@ -519,11 +519,10 @@ with gr.Blocks(title="Image to Vector", theme=gr.themes.Soft()) as app:
             - This tool requires valid API tokens to be set in the .env file:
               - Recraft API token for vectorization (required)
               - At least one of the following for image generation:
-                - OpenAI API key (OPENAI_API_KEY) for GPT-Image-1 or DALL-E 3
+                - OpenAI API key (OPENAI_API_KEY) for GPT-Image-1
                 - Replicate API token (REPLICATE_API_TOKEN) for Ideogram v3
                 - Fal.ai API key (FAL_KEY) for Ideogram v3
             - You can choose which API provider to use in the dropdown menu
-            - When using OpenAI, the system will try GPT-Image-1 first and fall back to DALL-E 3 if needed
             - All images are saved to the 'output/uploads' directory
             - All vectorized SVGs are saved to the 'output/vectors' directory
             """
@@ -562,9 +561,9 @@ def check_environment():
         issues.append("⚠️ No image generation API configured! Please create a .env file with either OPENAI_API_KEY, REPLICATE_API_TOKEN, or FAL_KEY.")
     else:
         if not openai_api_key:
-            print("ℹ️ OpenAI API key not found. GPT-Image-1 and DALL-E 3 will not be available. Another provider will be used for image generation.")
+            print("ℹ️ OpenAI API key not found. GPT-Image-1 will not be available. Another provider will be used for image generation.")
         else:
-            print("✅ OpenAI API key found. GPT-Image-1 and DALL-E 3 will be available for image generation.")
+            print("✅ OpenAI API key found. GPT-Image-1 will be available for image generation.")
 
         if not replicate_api_key:
             print("ℹ️ Replicate API token not found. Ideogram v3 via Replicate will not be available.")

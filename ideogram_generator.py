@@ -6,7 +6,7 @@ load_dotenv()
 
 def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="auto", provider_name=None, progress=None):
     """
-    Generate an image using OpenAI GPT-Image-1, DALL-E 3, or Ideogram v3 via the configured API provider
+    Generate an image using OpenAI GPT-Image-1 or Ideogram v3 via the configured API provider
 
     Args:
         prompt (str): Text prompt describing the image to generate
@@ -26,7 +26,7 @@ def generate_image(prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style
 
     Notes:
         This function uses one of the following APIs for image generation:
-        - OpenAI API (GPT-Image-1 or DALL-E 3)
+        - OpenAI API (GPT-Image-1)
         - Replicate API (Ideogram v3)
         - Fal.ai API (Ideogram v3)
 
@@ -61,7 +61,7 @@ if __name__ == "__main__":
         # Prompt for the API provider
         print("Available API providers:")
         print("1. Auto (use first available provider)")
-        print("2. OpenAI (GPT-Image-1/DALL-E 3)")
+        print("2. OpenAI (GPT-Image-1)")
         print("3. Replicate")
         print("4. Fal.ai")
 

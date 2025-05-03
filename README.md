@@ -1,8 +1,8 @@
 # Image to Vector
 
-A tool to generate images with OpenAI GPT-Image-1, DALL-E 3, or Ideogram v3 and vectorize them using the Recraft API. Includes both a command-line interface and a web-based UI powered by Gradio.
+A tool to generate images with OpenAI GPT-Image-1 or Ideogram v3 and vectorize them using the Recraft API. Includes both a command-line interface and a web-based UI powered by Gradio.
 
-This tool uses OpenAI's GPT-Image-1 model, DALL-E 3, or the latest Ideogram v3 model from either Replicate or Fal.ai to create high-quality images from text prompts, and then converts them to scalable vector graphics (SVG) using the Recraft API.
+This tool uses OpenAI's GPT-Image-1 model or the latest Ideogram v3 model from either Replicate or Fal.ai to create high-quality images from text prompts, and then converts them to scalable vector graphics (SVG) using the Recraft API.
 
 ## Setup
 
@@ -36,7 +36,7 @@ This tool uses OpenAI's GPT-Image-1 model, DALL-E 3, or the latest Ideogram v3 m
 python ideogram_generator.py
 ```
 
-The script will prompt you to choose an API provider (OpenAI, Replicate, or Fal.ai), enter a text prompt, and select various options. After processing, it will generate an image and save it to the current directory. When using OpenAI, the system will try GPT-Image-1 first and fall back to DALL-E 3 if needed.
+The script will prompt you to choose an API provider (OpenAI, Replicate, or Fal.ai), enter a text prompt, and select various options. After processing, it will generate an image and save it to the current directory.
 
 #### Vectorize an existing image
 ```bash
@@ -137,7 +137,7 @@ SVG file successfully downloaded to generated_image_vectorized.svg
 
 ## Features
 
-- Generate high-quality images using OpenAI GPT-Image-1, DALL-E 3, or Ideogram v3 models
+- Generate high-quality images using OpenAI GPT-Image-1 or Ideogram v3 models
 - Support for multiple API providers (OpenAI, Replicate, and Fal.ai)
 - Vectorize images using Recraft API
 - User-friendly web interface with Gradio

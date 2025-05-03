@@ -405,39 +405,26 @@ class OpenAIProvider(APIProvider):
         """Check if OpenAI API is properly configured"""
         return self.api_key is not None and len(self.api_key.strip()) > 0
 
-    def _map_aspect_ratio_to_size(self, aspect_ratio, model="dall-e-3"):
+    def _map_aspect_ratio_to_size(self, aspect_ratio):
         """
         Map aspect ratio to size for OpenAI API
 
         Args:
             aspect_ratio (str): Aspect ratio string (e.g., "1:1", "16:9", "3:2")
-            model (str): The model being used ("gpt-image-1" or "dall-e-3")
 
         Returns:
             tuple: (width, height) in pixels for the OpenAI API
         """
-        if model == "gpt-image-1":
-            # GPT-Image-1 supports 1024x1024, 1536x1024, 1024x1536, or auto
-            ratio_map = {
-                "1:1": (1024, 1024),  # Square
-                "16:9": (1536, 1024),  # Landscape
-                "9:16": (1024, 1536),  # Portrait
-                "4:3": (1536, 1024),   # Landscape (approximated)
-                "3:4": (1024, 1536),   # Portrait (approximated)
-                "3:2": (1536, 1024),   # Landscape (approximated)
-                "2:3": (1024, 1536),   # Portrait (approximated)
-            }
-        else:
-            # DALL-E 3 supports 1024x1024, 1792x1024, and 1024x1792
-            ratio_map = {
-                "1:1": (1024, 1024),  # Square
-                "16:9": (1792, 1024),  # Landscape
-                "9:16": (1024, 1792),  # Portrait
-                "4:3": (1792, 1024),   # Landscape (approximated)
-                "3:4": (1024, 1792),   # Portrait (approximated)
-                "3:2": (1792, 1024),   # Landscape (approximated)
-                "2:3": (1024, 1792),   # Portrait (approximated)
-            }
+        # GPT-Image-1 supports 1024x1024, 1536x1024, 1024x1536, or auto
+        ratio_map = {
+            "1:1": (1024, 1024),  # Square
+            "16:9": (1536, 1024),  # Landscape
+            "9:16": (1024, 1536),  # Portrait
+            "4:3": (1536, 1024),   # Landscape (approximated)
+            "3:4": (1024, 1536),   # Portrait (approximated)
+            "3:2": (1536, 1024),   # Landscape (approximated)
+            "2:3": (1024, 1536),   # Portrait (approximated)
+        }
 
         # Return the mapped value or default to square
         return ratio_map.get(aspect_ratio, (1024, 1024))
@@ -477,68 +464,27 @@ class OpenAIProvider(APIProvider):
         # Default to PNG for all other cases
         return "png"
 
-    def _map_style_type_for_openai(self, style_type, model="dall-e-3"):
-        """
-        Map style type to the format expected by OpenAI API
-
-        Args:
-            style_type (str): Style type from the UI (case-insensitive)
-            model (str): The model being used ("gpt-image-1" or "dall-e-3")
-
-        Returns:
-            str: Style type in the format expected by OpenAI API
-                 For DALL-E 3: "vivid" or "natural"
-                 For GPT-Image-1: Not used (returns None)
-        """
-        # GPT-Image-1 doesn't use style parameter
-        if model == "gpt-image-1":
-            return None
-
-        # Map to the format expected by DALL-E 3 API
-        # DALL-E 3 supports "vivid" (default) or "natural"
-        style_map = {
-            "auto": "vivid",      # Default to vivid for auto
-            "general": "vivid",   # Map general to vivid
-            "realistic": "natural", # Map realistic to natural
-            "design": "vivid",    # Map design to vivid
-            "none": "vivid"       # Map none to vivid
-        }
-
-        # Convert to lowercase for case-insensitive matching
-        style_key = style_type.lower() if style_type else "auto"
-        return style_map.get(style_key, "vivid")
-
-    def _map_magic_prompt_to_quality(self, magic_prompt_option, model="dall-e-3"):
+    def _map_magic_prompt_to_quality(self, magic_prompt_option):
         """
         Map magic prompt option to quality parameter for OpenAI API
 
         Args:
             magic_prompt_option (str): Magic prompt option ("Auto", "On", "Off")
-            model (str): The model being used ("gpt-image-1" or "dall-e-3")
 
         Returns:
-            str: Quality parameter for OpenAI API
-                 For DALL-E 3: "standard" or "hd"
-                 For GPT-Image-1: "auto", "high", "medium", or "low"
+            str: Quality parameter for OpenAI API ("auto", "high", "medium", or "low")
         """
-        # Different quality mappings based on the model
-        if model == "gpt-image-1":
-            # For GPT-Image-1, quality can be "auto", "high", "medium", or "low"
-            if magic_prompt_option.lower() == "on":
-                return "high"
-            elif magic_prompt_option.lower() == "off":
-                return "medium"
-            else:  # "Auto"
-                return "auto"
-        else:
-            # For DALL-E 3, quality can be "standard" or "hd"
-            if magic_prompt_option.lower() in ["auto", "on"]:
-                return "hd"
-            return "standard"
+        # For GPT-Image-1, quality can be "auto", "high", "medium", or "low"
+        if magic_prompt_option.lower() == "on":
+            return "high"
+        elif magic_prompt_option.lower() == "off":
+            return "medium"
+        else:  # "Auto"
+            return "auto"
 
     def generate_image(self, prompt, aspect_ratio="1:1", magic_prompt_option="Auto", style_type="auto", progress=None):
         """
-        Generate an image using OpenAI's GPT-Image-1 model (or fallback to DALL-E 3)
+        Generate an image using OpenAI's GPT-Image-1 model
 
         Args:
             prompt (str): Text prompt describing the image to generate
@@ -561,7 +507,7 @@ class OpenAIProvider(APIProvider):
         # Update progress if provided
         if progress is not None and hasattr(progress, "__call__"):
             try:
-                progress(0.2, "Starting image generation with OpenAI...")
+                progress(0.2, "Starting image generation with OpenAI GPT-Image-1...")
             except Exception as e:
                 logger.warning(f"Error updating progress: {e}")
 
@@ -582,64 +528,33 @@ class OpenAIProvider(APIProvider):
                 except Exception as e:
                     logger.warning(f"Error updating progress: {e}")
 
-            # Try to use GPT-Image-1 model first
-            try:
-                # Map parameters for GPT-Image-1
-                gpt_model = "gpt-image-1"
-                width, height = self._map_aspect_ratio_to_size(aspect_ratio, gpt_model)
-                gpt_quality = self._map_magic_prompt_to_quality(magic_prompt_option, gpt_model)
-                background = self._get_gpt_image_background(style_type)
-                output_format = self._get_gpt_image_output_format(background)
+            # Map parameters for GPT-Image-1
+            gpt_model = "gpt-image-1"
+            width, height = self._map_aspect_ratio_to_size(aspect_ratio)
+            gpt_quality = self._map_magic_prompt_to_quality(magic_prompt_option)
+            background = self._get_gpt_image_background(style_type)
+            output_format = self._get_gpt_image_output_format(background)
 
-                # Log the parameters being used
-                logger.info(f"Using GPT-Image-1 with parameters: size={width}x{height}, quality={gpt_quality}, background={background}, output_format={output_format}")
+            # Log the parameters being used
+            logger.info(f"Using GPT-Image-1 with parameters: size={width}x{height}, quality={gpt_quality}, background={background}, output_format={output_format}")
 
-                # Prepare parameters for the API call
-                params = {
-                    "model": gpt_model,
-                    "prompt": prompt,
-                    "size": f"{width}x{height}",
-                    "quality": gpt_quality,
-                    "background": background,
-                    "output_format": output_format,
-                    "n": 1,
-                    "response_format": "b64_json"  # Get base64 encoded image directly
-                }
+            # Prepare parameters for the API call
+            params = {
+                "model": gpt_model,
+                "prompt": prompt,
+                "size": f"{width}x{height}",
+                "quality": gpt_quality,
+                "background": background,
+                "output_format": output_format,
+                "n": 1,
+                "response_format": "b64_json"  # Get base64 encoded image directly
+            }
 
-                # Call the OpenAI API with GPT-Image-1 model
-                response = client.images.generate(**params)
+            # Call the OpenAI API with GPT-Image-1 model
+            response = client.images.generate(**params)
 
-                # Log success
-                logger.info("Successfully generated image with GPT-Image-1")
-
-            except Exception as e:
-                # If GPT-Image-1 fails, fallback to DALL-E 3
-                logger.warning(f"GPT-Image-1 model failed, falling back to DALL-E 3: {e}")
-                if progress is not None and hasattr(progress, "__call__"):
-                    try:
-                        progress(0.5, "Falling back to DALL-E 3 model...")
-                    except Exception as e:
-                        logger.warning(f"Error updating progress: {e}")
-
-                # Map parameters for DALL-E 3
-                dalle_model = "dall-e-3"
-                width, height = self._map_aspect_ratio_to_size(aspect_ratio, dalle_model)
-                style = self._map_style_type_for_openai(style_type, dalle_model)
-                quality = self._map_magic_prompt_to_quality(magic_prompt_option, dalle_model)
-
-                # Log the parameters being used
-                logger.info(f"Using DALL-E 3 with parameters: size={width}x{height}, quality={quality}, style={style}")
-
-                # Call the OpenAI API with DALL-E 3 model
-                response = client.images.generate(
-                    model=dalle_model,
-                    prompt=prompt,
-                    size=f"{width}x{height}",
-                    quality=quality,
-                    style=style,
-                    n=1,
-                    response_format="b64_json"  # Get base64 encoded image directly
-                )
+            # Log success
+            logger.info("Successfully generated image with GPT-Image-1")
 
             # Update progress if provided
             if progress is not None and hasattr(progress, "__call__"):
@@ -707,7 +622,7 @@ def get_provider(provider_name=None):
             return replicate_provider
         elif provider_name.lower() == "fal" and fal_provider.is_configured():
             return fal_provider
-        elif (provider_name.lower() == "openai" or provider_name.lower() == "openai (gpt-image-1/dall-e 3)") and openai_provider.is_configured():
+        elif (provider_name.lower() == "openai" or provider_name.lower() == "openai (gpt-image-1)") and openai_provider.is_configured():
             return openai_provider
 
     # Otherwise, use the first available provider
@@ -733,7 +648,7 @@ if __name__ == "__main__":
         print("1. Auto (use first available provider)")
         print("2. Replicate")
         print("3. Fal.ai")
-        print("4. OpenAI")
+        print("4. OpenAI (GPT-Image-1)")
 
         provider_choice = input("Choose an API provider (1-4, default: 1): ").strip() or "1"
 
