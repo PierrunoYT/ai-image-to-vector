@@ -87,13 +87,24 @@ def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="
                 # Map the value from the image generation (0.0-1.0) to our generation stage progress
                 update_progress("generate", value)
 
+        # Map provider name from UI to the format expected by the API
+        provider_map = {
+            "Auto": None,  # Auto selection
+            "OpenAI (GPT-Image-1)": "openai",
+            "Replicate": "replicate",
+            "Fal.ai": "fal"
+        }
+
+        # Get the mapped provider name or None for Auto
+        mapped_provider = provider_map.get(provider_name, None)
+
         # Generate the image using the appropriate provider
         generated_image = generate_image(
             prompt=prompt,
             aspect_ratio=aspect_ratio,
             magic_prompt_option=magic_prompt_option,
             style_type=style_type,
-            provider_name=provider_name,
+            provider_name=mapped_provider,
             progress=ProgressWrapper()
         )
 
@@ -372,12 +383,10 @@ with gr.Blocks(title="Image to Vector", theme=gr.themes.Soft()) as app:
                     gr.Markdown("### 📤 Upload Image")
                     input_image = gr.Image(
                         type="pil",
-                        label="",
+                        label="Maximum dimensions: 4000x4000 pixels, Maximum size: 10MB",
                         elem_id="input-image",
                         height=300,
-                        image_mode="RGB",
-                        # Add tooltips about size limits
-                        info="Maximum dimensions: 4000x4000 pixels, Maximum size: 10MB"
+                        image_mode="RGB"
                     )
                     vectorize_button = gr.Button(
                         "🔄 Vectorize Image",
@@ -411,9 +420,14 @@ with gr.Blocks(title="Image to Vector", theme=gr.themes.Soft()) as app:
                     aspect_ratio = gr.Dropdown(
                         label="Aspect Ratio",
                         choices=[
-                            "1:1", # Square
-                            "16:9", "16:10", "3:2", "4:3", "5:4", "2:1", "3:1", # Landscape
-                            "9:16", "10:16", "2:3", "3:4", "4:5", "1:2", "1:3"  # Portrait
+                            "1:1",    # Square - supported by all
+                            "3:2",    # Landscape - supported by GPT-Image-1
+                            "2:3",    # Portrait - supported by GPT-Image-1
+                            "16:9",   # Landscape - not supported by GPT-Image-1, will use auto
+                            "9:16",   # Portrait - not supported by GPT-Image-1, will use auto
+                            "4:3",    # Landscape - not supported by GPT-Image-1, will use auto
+                            "3:4",    # Portrait - not supported by GPT-Image-1, will use auto
+                            "auto"    # Auto - let API decide
                         ],
                         value="1:1",
                         elem_id="aspect-ratio"
@@ -421,29 +435,155 @@ with gr.Blocks(title="Image to Vector", theme=gr.themes.Soft()) as app:
 
                     # Add magic prompt option
                     magic_prompt_option = gr.Dropdown(
-                        label="Magic Prompt",
+                        label="Magic Prompt (optimizes prompt for better results)",
                         choices=["Auto", "On", "Off"],
                         value="Auto",
-                        elem_id="magic-prompt",
-                        info="Magic Prompt will interpret your prompt and optimize it to maximize variety and quality"
+                        elem_id="magic-prompt"
                     )
 
                     # Add style type dropdown
                     style_type = gr.Dropdown(
-                        label="Style Type",
+                        label="Style Type (defines aesthetic of the image)",
                         choices=["auto", "general", "realistic", "design", "none"],
                         value="auto",
-                        elem_id="style-type",
-                        info="The style helps define the specific aesthetic of the image"
+                        elem_id="style-type"
                     )
 
                     # Add provider selection dropdown
                     provider_name = gr.Dropdown(
-                        label="API Provider",
+                        label="API Provider (image generation service)",
                         choices=["Auto", "OpenAI (GPT-Image-1)", "Replicate", "Fal.ai"],
                         value="Auto",
-                        elem_id="provider-name",
-                        info="Choose which API provider to use for image generation."
+                        elem_id="provider-name"
+                    )
+
+                    # Add a warning message area for compatibility info
+                    compatibility_warning = gr.Markdown(
+                        visible=False,
+                        value="",
+                        elem_id="compatibility-warning"
+                    )
+
+                    # Function to update UI components based on provider
+                    def update_ui_for_provider(provider, current_aspect_ratio):
+                        # Initialize outputs
+                        warning_message = ""
+                        warning_visible = False
+
+                        # For OpenAI GPT-Image-1
+                        if provider == "OpenAI (GPT-Image-1)":
+                            # 1. Update style type choices to background options for GPT-Image-1
+                            style_update = gr.update(
+                                choices=["auto", "transparent", "opaque"],  # All supported options
+                                value="auto",
+                                label="Background Type (auto, transparent, opaque)"
+                            )
+
+                            # 2. Update magic prompt options to quality options for GPT-Image-1
+                            magic_prompt_update = gr.update(
+                                choices=["auto", "high", "medium", "low"],
+                                value="auto",
+                                label="Quality (auto, high, medium, low)"
+                            )
+
+                            # 3. Check aspect ratio compatibility
+                            gpt_supported_ratios = ["1:1", "3:2", "2:3", "auto"]
+                            if current_aspect_ratio not in gpt_supported_ratios:
+                                warning_message = """
+                                ⚠️ **Aspect Ratio Warning**: GPT-Image-1 only supports 1:1, 3:2, 2:3, or auto.
+                                Your selected ratio will default to "auto" size.
+
+                                ℹ️ **GPT-Image-1 Parameters**:
+                                - "Background Type": Controls background (auto, transparent, opaque)
+                                - "Quality": Controls image quality (auto, high, medium, low)
+                                """
+                                warning_visible = True
+                            else:
+                                warning_message = """
+                                ℹ️ **GPT-Image-1 Parameters**:
+                                - "Background Type": Controls background (auto, transparent, opaque)
+                                - "Quality": Controls image quality (auto, high, medium, low)
+                                """
+                                warning_visible = True
+                        elif provider == "Auto":
+                            # For Auto, we need to check if OpenAI is configured
+                            # If it is, we should show the same warnings as for OpenAI
+                            openai_api_key = os.getenv("OPENAI_API_KEY")
+                            if openai_api_key and len(openai_api_key.strip()) > 0:
+                                # OpenAI is configured and might be used, so show the same warnings
+                                style_update = gr.update(
+                                    choices=["auto", "transparent", "opaque"],  # All supported options
+                                    value="auto",
+                                    label="Background Type (auto, transparent, opaque)"
+                                )
+
+                                # Update magic prompt options
+                                magic_prompt_update = gr.update(
+                                    choices=["auto", "high", "medium", "low"],
+                                    value="auto",
+                                    label="Quality/Magic Prompt (depends on provider)"
+                                )
+
+                                gpt_supported_ratios = ["1:1", "3:2", "2:3", "auto"]
+                                if current_aspect_ratio not in gpt_supported_ratios:
+                                    warning_message = """
+                                    ⚠️ **Aspect Ratio Warning**: If GPT-Image-1 is selected, it only supports 1:1, 3:2, 2:3, or auto.
+                                    Your selected ratio will default to "auto" size when using GPT-Image-1.
+
+                                    ℹ️ **Parameter Info**:
+                                    - For GPT-Image-1: "Background Type" controls background (auto, transparent, opaque) and "Quality" sets quality level (auto, high, medium, low)
+                                    - For Ideogram v3: "Style Type" controls aesthetic and "Magic Prompt" optimizes the prompt
+                                    """
+                                    warning_visible = True
+                                else:
+                                    warning_message = """
+                                    ℹ️ **Parameter Info**:
+                                    - For GPT-Image-1: "Background Type" controls background (auto, transparent, opaque) and "Quality" sets quality level (auto, high, medium, low)
+                                    - For Ideogram v3: "Style Type" controls aesthetic and "Magic Prompt" optimizes the prompt
+                                    """
+                                    warning_visible = True
+                            else:
+                                # OpenAI is not configured, so show all style options
+                                style_update = gr.update(
+                                    choices=["auto", "general", "realistic", "design", "none"],
+                                    value="auto",
+                                    label="Style Type (defines aesthetic of the image)"
+                                )
+
+                                # Reset magic prompt options for Ideogram
+                                magic_prompt_update = gr.update(
+                                    choices=["Auto", "On", "Off"],
+                                    value="Auto",
+                                    label="Magic Prompt (optimizes prompt for better results)"
+                                )
+                        else:
+                            # For other providers, all style options are available
+                            style_update = gr.update(
+                                choices=["auto", "general", "realistic", "design", "none"],
+                                value="auto",
+                                label="Style Type (defines aesthetic of the image)"
+                            )
+
+                            # Reset magic prompt options for Ideogram
+                            magic_prompt_update = gr.update(
+                                choices=["Auto", "On", "Off"],
+                                value="Auto",
+                                label="Magic Prompt (optimizes prompt for better results)"
+                            )
+
+                        return [style_update, gr.update(visible=warning_visible, value=warning_message), magic_prompt_update]
+
+                    # Connect provider and aspect ratio changes to UI updates
+                    provider_name.change(
+                        fn=update_ui_for_provider,
+                        inputs=[provider_name, aspect_ratio],
+                        outputs=[style_type, compatibility_warning, magic_prompt_option]
+                    )
+
+                    aspect_ratio.change(
+                        fn=update_ui_for_provider,
+                        inputs=[provider_name, aspect_ratio],
+                        outputs=[style_type, compatibility_warning, magic_prompt_option]
                     )
 
                     generate_button = gr.Button(
@@ -505,15 +645,48 @@ with gr.Blocks(title="Image to Vector", theme=gr.themes.Soft()) as app:
             ## Generate Image Tab
             1. Enter a text prompt describing the image you want to create
             2. Choose an aspect ratio for your image (e.g., 1:1, 16:9, 3:2)
+               - Note: GPT-Image-1 only supports 1:1, 3:2, and 2:3 ratios
             3. Select a Magic Prompt option:
-               - Auto: Automatically optimize the prompt
+               - Auto: Automatically optimize the prompt (default)
                - On: Always optimize the prompt
                - Off: Use the prompt as-is
-            4. Choose a Style Type (None, Auto, General, Realistic, Design)
-            5. Click the 'Generate & Vectorize' button
-            6. Wait for the AI to generate your image and vectorize it
-            7. View the generated image and vectorized SVG in the preview areas
-            8. Download the resulting SVG file using the download button
+            4. Choose a Style Type or Background Type (depending on provider)
+            5. Select an API Provider:
+               - Auto: Use the first available provider
+               - OpenAI (GPT-Image-1): Uses OpenAI's image generation model
+               - Replicate: Uses Ideogram v3 via Replicate
+               - Fal.ai: Uses Ideogram v3 via Fal.ai
+            6. Click the 'Generate & Vectorize' button
+            7. Wait for the AI to generate your image and vectorize it
+            8. View the generated image and vectorized SVG in the preview areas
+            9. Download the resulting SVG file using the download button
+
+            ## Provider-Specific Parameters
+
+            ### OpenAI (GPT-Image-1)
+            - **Background Type**: Controls background
+              - auto: Let OpenAI decide (default)
+              - transparent: Transparent background (requires PNG format)
+              - opaque: Solid background
+            - **Quality**: Controls image quality
+              - auto: Let OpenAI decide (default)
+              - high: High quality
+              - medium: Medium quality
+              - low: Low quality
+            - **Aspect Ratio**: Only supports 1:1, 3:2, 2:3, or auto
+
+            ### Ideogram v3 (Replicate and Fal.ai)
+            - **Style Type**: Controls the aesthetic style
+              - auto: Automatically select style (default)
+              - general: General style
+              - realistic: Realistic style
+              - design: Design style
+              - none: No specific style
+            - **Magic Prompt**: Controls prompt optimization
+              - Auto: Automatically optimize (default)
+              - On: Always optimize
+              - Off: Use prompt as-is
+            - **Aspect Ratio**: Supports various ratios (1:1, 16:9, 9:16, etc.)
 
             **Note:**
             - This tool requires valid API tokens to be set in the .env file:
