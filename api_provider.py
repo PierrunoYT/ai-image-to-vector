@@ -311,9 +311,9 @@ class FalProvider(APIProvider):
         try:
             # Import fal_client here to avoid import errors if not installed
             try:
-                import fal
+                import fal_client
             except ImportError:
-                raise ImportError("Fal.ai client not installed. Please install it with 'pip install fal'")
+                raise ImportError("Fal.ai client not installed. Please install it with 'pip install fal-client>=0.4.0'")
 
             # Map parameters to Fal.ai format
             image_size = self._map_aspect_ratio_to_image_size(aspect_ratio)
@@ -327,21 +327,37 @@ class FalProvider(APIProvider):
                 except Exception as e:
                     logger.warning(f"Error updating progress: {e}")
 
-            # Call the Fal.ai API using the newer client format
-            # Create a client with the API key
-            client = fal.FalClient(api_key=self.api_key)
+            # Define a callback function for queue updates
+            def on_queue_update(update):
+                if isinstance(update, fal_client.InProgress) and hasattr(update, "logs"):
+                    for log in update.logs:
+                        if "message" in log:
+                            logger.info(f"Fal.ai progress: {log['message']}")
+                            # Update progress if provided
+                            if progress is not None and hasattr(progress, "__call__"):
+                                try:
+                                    # Map the progress to 0.4-0.6 range
+                                    progress(0.5, log["message"])
+                                except Exception as e:
+                                    logger.warning(f"Error updating progress: {e}")
 
-            # Call the Ideogram v3 model
-            result = client.run(
+            # Set FAL_KEY as environment variable if not already set
+            if "FAL_KEY" not in os.environ:
+                os.environ["FAL_KEY"] = self.api_key
+
+            # Call the Ideogram v3 model using the new client format
+            result = fal_client.subscribe(
                 "fal-ai/ideogram/v3",
-                {
+                arguments={
                     "prompt": prompt,
                     "rendering_speed": "BALANCED",
                     "style": fal_style_type,
                     "expand_prompt": expand_prompt,
                     "num_images": 1,
                     "image_size": image_size
-                }
+                },
+                with_logs=True,
+                on_queue_update=on_queue_update
             )
 
             # Update progress if provided
@@ -363,30 +379,40 @@ class FalProvider(APIProvider):
             logger.debug(f"Fal.ai API response type: {type(result)}")
             logger.debug(f"Fal.ai API response: {result}")
 
-            # The new Fal.ai client might return results in a different format
-            # Let's handle different possible response formats
+            # Update progress if provided
+            if progress is not None and hasattr(progress, "__call__"):
+                try:
+                    progress(0.7, "Processing image from Ideogram v3...")
+                except Exception as e:
+                    logger.warning(f"Error updating progress: {e}")
+
             try:
                 # Try to extract the image URL from the response
                 image_url = None
 
-                # Check for different possible response formats
+                # The new fal_client.subscribe returns a dict with the format:
+                # {"images": [{"url": "..."}, ...], "seed": 123456}
                 if isinstance(result, dict):
                     # Format 1: {"images": [{"url": "..."}, ...]}
                     if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
                         if isinstance(result["images"][0], dict) and "url" in result["images"][0]:
                             image_url = result["images"][0]["url"]
+                            logger.info(f"Found image URL in images[0].url: {image_url}")
 
                     # Format 2: {"image": {"url": "..."}}
                     elif "image" in result and isinstance(result["image"], dict) and "url" in result["image"]:
                         image_url = result["image"]["url"]
+                        logger.info(f"Found image URL in image.url: {image_url}")
 
                     # Format 3: {"url": "..."}
                     elif "url" in result:
                         image_url = result["url"]
+                        logger.info(f"Found image URL in url: {image_url}")
 
                 # If we couldn't find an image URL, try to use the result directly
                 if not image_url and isinstance(result, str) and (result.startswith("http://") or result.startswith("https://")):
                     image_url = result
+                    logger.info(f"Using result directly as URL: {image_url}")
 
                 # If we still don't have an image URL, raise an error
                 if not image_url:

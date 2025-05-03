@@ -1,6 +1,7 @@
 import os
 import gradio as gr
 import traceback
+import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from PIL import Image
@@ -8,6 +9,10 @@ from io import BytesIO
 from recraft_vectorizer import vectorize_image, download_svg
 from ideogram_generator import generate_image
 from api_provider import get_provider
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -126,11 +131,59 @@ def generate_and_process_image(prompt, aspect_ratio="1:1", magic_prompt_option="
         # Return the results
         return generated_image, svg_path, svg_html, message
 
+    except ImportError as e:
+        # Handle missing dependencies more gracefully
+        traceback.print_exc()
+        logger.error(f"Import error during image generation: {e}")
+
+        # Provide more helpful error message with installation instructions
+        if "fal" in str(e).lower():
+            error_message = f"""❌ Image generation failed!
+
+⚠️ Error: {e}
+
+To use Fal.ai as a provider, please install the required package:
+```
+pip install fal
+```
+
+After installation, restart the application and try again.
+"""
+        elif "replicate" in str(e).lower():
+            error_message = f"""❌ Image generation failed!
+
+⚠️ Error: {e}
+
+To use Replicate as a provider, please install the required package:
+```
+pip install replicate
+```
+
+After installation, restart the application and try again.
+"""
+        elif "openai" in str(e).lower():
+            error_message = f"""❌ Image generation failed!
+
+⚠️ Error: {e}
+
+To use OpenAI as a provider, please install the required package:
+```
+pip install openai
+```
+
+After installation, restart the application and try again.
+"""
+        else:
+            error_message = f"❌ Image generation failed!\n\n⚠️ Error: {e}\n\nPlease install the required package and try again."
+
+        return None, None, None, error_message
+
     except ValueError as e:
         # Handle specific errors
         traceback.print_exc()
         error_message = f"❌ ERROR: {str(e)}"
         return None, None, None, error_message
+
     except Exception as e:
         # Print the full traceback to the console for debugging
         traceback.print_exc()
