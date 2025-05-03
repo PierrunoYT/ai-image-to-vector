@@ -413,21 +413,22 @@ class OpenAIProvider(APIProvider):
             aspect_ratio (str): Aspect ratio string (e.g., "1:1", "16:9", "3:2")
 
         Returns:
-            tuple: (width, height) in pixels for the OpenAI API
+            tuple: (width, height) in pixels for the OpenAI API, or None for auto
         """
-        # GPT-Image-1 supports 1024x1024, 1536x1024, 1024x1536, or auto
+        # GPT-Image-1 officially supports only these exact sizes:
+        # - 1024x1024 (square)
+        # - 1536x1024 (landscape)
+        # - 1024x1536 (portrait)
+        # - auto (We'll handle this by returning None, which will be converted to "auto" when making API call)
         ratio_map = {
-            "1:1": (1024, 1024),  # Square
-            "16:9": (1536, 1024),  # Landscape
-            "9:16": (1024, 1536),  # Portrait
-            "4:3": (1536, 1024),   # Landscape (approximated)
-            "3:4": (1024, 1536),   # Portrait (approximated)
-            "3:2": (1536, 1024),   # Landscape (approximated)
-            "2:3": (1024, 1536),   # Portrait (approximated)
+            "1:1": (1024, 1024),   # Square
+            "3:2": (1536, 1024),   # Exact supported landscape format (3:2 is precisely 1536×1024)
+            "2:3": (1024, 1536),   # Exact supported portrait format (2:3 is precisely 1024×1536)
+            "auto": None,          # Auto format
         }
 
-        # Return the mapped value or default to square
-        return ratio_map.get(aspect_ratio, (1024, 1024))
+        # Return the mapped value or default to auto (None) for any unsupported aspect ratio
+        return ratio_map.get(aspect_ratio.lower() if isinstance(aspect_ratio, str) else aspect_ratio, None)
 
     def _get_gpt_image_background(self, style_type):
         """
@@ -536,19 +537,25 @@ class OpenAIProvider(APIProvider):
             output_format = self._get_gpt_image_output_format(background)
 
             # Log the parameters being used
-            logger.info(f"Using GPT-Image-1 with parameters: size={width}x{height}, quality={gpt_quality}, background={background}, output_format={output_format}")
+            size_str = f"{width}x{height}" if width is not None and height is not None else "auto"
+            logger.info(f"Using GPT-Image-1 with parameters: size={size_str}, quality={gpt_quality}, background={background}, output_format={output_format}")
 
             # Prepare parameters for the API call
             params = {
                 "model": gpt_model,
                 "prompt": prompt,
-                "size": f"{width}x{height}",
                 "quality": gpt_quality,
                 "background": background,
                 "output_format": output_format,
                 "n": 1,
                 "response_format": "b64_json"  # Get base64 encoded image directly
             }
+            
+            # Add size parameter if it's not auto
+            if width is not None and height is not None:
+                params["size"] = f"{width}x{height}"
+            else:
+                params["size"] = "auto"
 
             # Call the OpenAI API with GPT-Image-1 model
             response = client.images.generate(**params)
