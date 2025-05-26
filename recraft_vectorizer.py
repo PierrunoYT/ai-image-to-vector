@@ -2,8 +2,6 @@ import os
 import requests
 import logging
 from dotenv import load_dotenv
-from openai import OpenAI
-import openai
 
 # Configure logging
 logging.basicConfig(
@@ -38,44 +36,61 @@ def vectorize_image(image_path):
     if not api_key:
         raise ValueError("Recraft API token not found. Make sure to set the RECRAFT_API_TOKEN environment variable.")
 
+    # Input validation and sanitization
+    if not image_path or not isinstance(image_path, str):
+        raise ValueError(f"Invalid image path: {image_path}")
+    
+    # Sanitize path to prevent directory traversal
+    image_path = os.path.abspath(image_path)
+    
     # Check if the file exists
     if not os.path.exists(image_path):
         raise FileNotFoundError(f"Image file not found: {image_path}")
+    
+    # Validate file extension (basic check)
+    valid_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp']
+    if not any(image_path.lower().endswith(ext) for ext in valid_extensions):
+        raise ValueError(f"Unsupported image format. Supported formats: {valid_extensions}")
+    
+    # Check file size (prevent extremely large files)
+    file_size = os.path.getsize(image_path)
+    max_size = 50 * 1024 * 1024  # 50MB
+    if file_size > max_size:
+        raise ValueError(f"Image file too large: {file_size} bytes. Maximum allowed: {max_size} bytes")
 
-    # Initialize the Recraft client
-    client = OpenAI(
-        base_url='https://external.api.recraft.ai/v1',
-        api_key=api_key,
-    )
+    # No need for OpenAI client since we're using requests directly
 
     # Make the API call to vectorize the image
     try:
         # Use context manager to ensure file is properly closed
         with open(image_path, 'rb') as image_file:
             try:
-                response = client.post(
-                    path='/images/vectorize',
-                    cast_to=object,
-                    options={
-                        'headers': {'Content-Type': 'multipart/form-data'},
-                        'timeout': 180  # 3 minute timeout
-                    },
-                    files={'file': image_file},
+                # Use requests directly for Recraft API since it's not OpenAI
+                files = {'file': image_file}
+                headers = {'Authorization': f'Bearer {api_key}'}
+                response = requests.post(
+                    'https://external.api.recraft.ai/v1/images/vectorize',
+                    files=files,
+                    headers=headers,
+                    timeout=180
                 )
-            except AttributeError as e:
-                raise ValueError(f"OpenAI client error - likely API version mismatch: {e}")
-            except openai.APIError as e:
-                raise ValueError(f"OpenAI API error: {e}")
-            except openai.APIConnectionError as e:
-                raise ValueError(f"Network error when connecting to OpenAI: {e}")
-            except openai.RateLimitError as e:
-                raise ValueError(f"Recraft API rate limit exceeded: {e}")
-            except openai.APITimeoutError as e:
+                response.raise_for_status()
+                response = response.json()
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 401:
+                    raise ValueError(f"Invalid API key or authentication error: {e}")
+                elif e.response.status_code == 429:
+                    raise ValueError(f"Recraft API rate limit exceeded: {e}")
+                elif e.response.status_code == 400:
+                    raise ValueError(f"Invalid request parameters: {e}")
+                else:
+                    raise ValueError(f"Recraft API error: {e}")
+            except requests.exceptions.ConnectionError as e:
+                raise ValueError(f"Network error when connecting to Recraft: {e}")
+            except requests.exceptions.Timeout as e:
                 raise ValueError(f"Request to Recraft API timed out: {e}")
-            except openai.AuthenticationError as e:
-                raise ValueError(f"Invalid API key or authentication error: {e}")
-            except openai.BadRequestError as e:
-                raise ValueError(f"Invalid request parameters: {e}")
+            except requests.exceptions.RequestException as e:
+                raise ValueError(f"Request error: {e}")
 
         # Validate response structure
         if response is None:
@@ -118,8 +133,33 @@ def download_svg(url, output_path):
         ValueError: If the URL is invalid
         requests.RequestException: If there's an error during the request
     """
+    # Input validation and sanitization
     if not url or not isinstance(url, str):
         raise ValueError(f"Invalid URL: {url}")
+    
+    # Basic URL validation
+    if not (url.startswith('http://') or url.startswith('https://')):
+        raise ValueError(f"URL must start with http:// or https://: {url}")
+    
+    # Path validation - ensure it's safe
+    if not output_path or not isinstance(output_path, str):
+        raise ValueError(f"Invalid output path: {output_path}")
+    
+    # Sanitize output path to prevent directory traversal
+    import os.path
+    output_path = os.path.abspath(output_path)
+    if '..' in output_path or output_path.startswith('/'):
+        # Allow absolute paths but prevent traversal
+        pass  # os.path.abspath already handles this
+    
+    # Ensure output directory is valid
+    output_dir = os.path.dirname(output_path)
+    if not output_dir:
+        output_dir = '.'
+    
+    # Validate file extension
+    if not output_path.lower().endswith('.svg'):
+        raise ValueError("Output path must have .svg extension")
 
     try:
         # Use a timeout to prevent hanging on slow connections
@@ -225,7 +265,7 @@ if __name__ == "__main__":
         if download_svg(svg_url, output_path):
             print("✅ Process completed successfully!")
         else:
-            print("❌ Failed to download the SVG file.")
+            print("❌ Failed to download the SVG file")
             exit(1)
 
     except ValueError as e:

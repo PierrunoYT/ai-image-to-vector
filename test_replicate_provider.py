@@ -72,17 +72,11 @@ if __name__ == "__main__":
     # Check if REPLICATE_API_TOKEN is set in environment variables
     replicate_api_token = os.getenv("REPLICATE_API_TOKEN")
     if not replicate_api_token:
-        # Try to get it from command line input
+        # Security: Don't accept API tokens via command line input
         print("REPLICATE_API_TOKEN environment variable not found.")
-        print("You can set it in your .env file or enter it now:")
-        replicate_api_token = input("Enter your Replicate API token: ").strip()
-        
-        if replicate_api_token:
-            # Set it for this session
-            os.environ["REPLICATE_API_TOKEN"] = replicate_api_token
-            print("API token set for this session.")
-        else:
-            print("No API token provided. Test will likely fail.")
+        print("Please set it in your .env file as REPLICATE_API_TOKEN=your_token")
+        print("Test cannot proceed without proper API token configuration.")
+        exit(1)
     
     logger.info("Testing Replicate Ideogram v3 Quality integration")
     success = test_replicate_provider()

@@ -621,10 +621,11 @@ class OpenAIProvider(APIProvider):
 
             # Add output_format parameter if supported
             # Note: This parameter might not be supported in all versions of the API
-            try:
-                params["output_format"] = output_format
-            except:
-                logger.warning("output_format parameter might not be supported, continuing without it")
+            if output_format:
+                try:
+                    params["output_format"] = output_format
+                except Exception as e:
+                    logger.warning(f"output_format parameter might not be supported: {e}, continuing without it")
 
             # Add size parameter if it's not auto
             if width is not None and height is not None:

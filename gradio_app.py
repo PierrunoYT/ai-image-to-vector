@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+# Check environment variables at startup
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+RECRAFT_API_TOKEN = os.getenv("RECRAFT_API_TOKEN")
+IDEOGRAM_API_KEY = os.getenv("IDEOGRAM_API_KEY")
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
+FAL_KEY = os.getenv("FAL_KEY")
+
 # Get API keys from environment variables
 recraft_api_key = os.getenv("RECRAFT_API_TOKEN")
 replicate_api_key = os.getenv("REPLICATE_API_TOKEN")
@@ -277,12 +284,22 @@ def process_image_internal(image, progress=gr.Progress(), start_progress=0.0):
         input_filename = f"image_{timestamp}.png"
         input_path = os.path.join(UPLOADS_DIR, input_filename)
 
-        # Ensure the image is saved
+        # Ensure the image is saved with proper error handling
         try:
+            # Check available disk space (basic check)
+            import shutil
+            free_space = shutil.disk_usage(UPLOADS_DIR).free
+            if free_space < 100 * 1024 * 1024:  # Less than 100MB free
+                return None, None, "❌ ERROR: Insufficient disk space to save image"
+            
             image.save(input_path)
             update_progress("save", 0.5)
+        except PermissionError as e:
+            return None, None, f"❌ ERROR: Permission denied when saving image: {str(e)}"
+        except OSError as e:
+            return None, None, f"❌ ERROR: System error when saving image: {str(e)}"
         except Exception as e:
-            return None, None, f"❌ ERROR: Failed to save uploaded image: {str(e)}"
+            return None, None, f"❌ Failed to save uploaded image: {str(e)}"
 
         # Validate the image file
         if not os.path.exists(input_path) or os.path.getsize(input_path) == 0:
@@ -390,9 +407,27 @@ def create_svg_preview_html(svg_path):
             </div>
             """
 
-        # Read the SVG file
-        with open(svg_path, 'r') as f:
-            svg_content = f.read()
+        # Read the SVG file with proper error handling
+        try:
+            with open(svg_path, 'r', encoding='utf-8') as f:
+                svg_content = f.read()
+        except UnicodeDecodeError:
+            # Try with different encoding
+            try:
+                with open(svg_path, 'r', encoding='latin-1') as f:
+                    svg_content = f.read()
+            except Exception as e:
+                return f"""
+                <div style="width:100%; height:100%; display:flex; justify-content:center; align-items:center; background-color:#f5f5f5; border-radius:8px; padding:10px;">
+                    <p style="color:red;">Error: Cannot read SVG file due to encoding issues: {str(e)}</p>
+                </div>
+                """
+        except IOError as e:
+            return f"""
+            <div style="width:100%; height:100%; display:flex; justify-content:center; align-items:center; background-color:#f5f5f5; border-radius:8px; padding:10px;">
+                <p style="color:red;">Error: Cannot read SVG file: {str(e)}</p>
+            </div>
+            """
 
         # Basic validation of SVG content
         if not svg_content.strip().startswith('<svg') and not '<?xml' in svg_content[:100]:
@@ -561,8 +596,7 @@ with gr.Blocks(title="Image to Vector", theme=gr.themes.Soft()) as app:
                         elif provider == "Auto":
                             # For Auto, we need to check if OpenAI is configured
                             # If it is, we should show the same warnings as for OpenAI
-                            openai_api_key = os.getenv("OPENAI_API_KEY")
-                            if openai_api_key and len(openai_api_key.strip()) > 0:
+                            if OPENAI_API_KEY and len(OPENAI_API_KEY.strip()) > 0:
                                 # OpenAI is configured and might be used, so show the same warnings
                                 style_update = gr.update(
                                     choices=["auto", "transparent", "opaque"],  # All supported options
